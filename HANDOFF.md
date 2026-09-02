@@ -19,7 +19,7 @@ import. All amounts are CAD.
 ```bash
 source .venv/bin/activate        # Python 3.14.2; streamlit 1.62.0, plotly 7.0.0, pytest 9.1.1
 streamlit run app.py             # opens http://localhost:8501
-python -m pytest -q              # 16 tests, all passing
+python -m pytest -q              # 43 tests, all passing
 ```
 
 Dependencies: `requirements.txt` (streamlit, plotly) and
@@ -29,11 +29,12 @@ Dependencies: `requirements.txt` (streamlit, plotly) and
 
 | File | Role |
 | --- | --- |
-| `app.py` | Streamlit UI: sidebar inputs, 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, 4 download buttons. Thin glue only. |
-| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `step_year()` (single-year engine shared by deterministic + MC; returns a 9-tuple including tax paid, OAS clawback, FERR minimum), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). |
-| `constants.py` | Statutory constants with cited sources: FERR (RRIF) minimum factors, QPP/OAS adjustment rules, 2025 maxima, planning defaults. |
+| `app.py` | Streamlit UI: sidebar inputs, 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, 4 download buttons. Thin glue only. No tax inputs — the tax section is an informational caption. |
+| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `ferr_conversion_age()` (resolves the RRSP→FERR conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns an 11-tuple including tax paid, OAS clawback, FERR minimum, marginal/effective rates), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). |
+| `tax.py` | The income tax model (pure, stdlib): `scale()` (base-year → year indexation), `federal_bracket_tax()` / `quebec_bracket_tax()`, `federal_credits()` / `quebec_credits()` (basic personal, age 65+, pension-income; phase-outs), `income_tax()` (returns fed/QC payable after credits and the Quebec abatement), `oas_recovery()` (clawback), `marginal_burden_rate()` (numeric marginal of income tax + recovery), `eligible_pension_income()` (FERR payments only, from the conversion age). |
+| `constants.py` | Statutory constants with cited sources: FERR (RRIF) minimum factors, QPP/OAS adjustment rules, 2025 pension maxima, 2026 federal/Quebec tax brackets, credits and phase-outs, planning defaults. |
 | `export.py` | `projection_csv()`, `summary_csv()`, `montecarlo_csv()`, `zip_bytes()`. Raw numeric cells (2 decimals, no thousands separators) so Google Sheets imports them as numbers. |
-| `tests/` | `test_projection.py` (11 tests: factors, zero-growth, inflation indexing, FERR minimum, RRSP-close-at-71, exhaustion, MC reproducibility/percentile order, validation, end-to-end), `test_export.py` (5 tests: CSV layout/values, shortfall rows, zip contents). |
+| `tests/` | `test_tax.py` (17 tests: brackets, credits/phase-outs, abatement, recovery, marginal rate, indexation), `test_projection.py` (model math, tax/clawback columns, exhaustion, validation, end-to-end), `test_export.py` (CSV layout/values, shortfall rows, zip contents). |
 | `README.md` | User setup, Google Sheets import steps, model explanation, sources. |
 | `conftest.py` | Empty; makes project root importable for pytest. |
 
@@ -42,11 +43,13 @@ Dependencies: `requirements.txt` (streamlit, plotly) and
 Ages run `current_age → end_age`; `year_offset = age - current_age`;
 `year = date.today().year + offset` (note: the machine clock is 2026).
 
-1. **FERR minimum** = `ferr_min_factor(age) × RRSP opening balance` when
-   `age >= 71` (factor table in `constants.py`, ITR s. 7308).
+1. **FERR minimum** = `ferr_min_factor(age) × RRSP opening balance` from the
+   conversion age onward (`ferr_conversion_age(p)`: the user's choice or the
+   retirement age, capped at the statutory deadline of 71; the factor table is
+   in `constants.py`, ITR s. 7308 — ages under 71 use `1/(90 − age)`).
 2. **Contributions** (only while `age < retirement_age`): monthly × 12 ×
-   `(1 + escalation)^offset`. RRSP contributions stop at 71 (RRSP is closed);
-   from 71 the RRSP monthly amount is redirected to TFSA.
+   `(1 + escalation)^offset`. RRSP contributions stop at the conversion age
+   (RRSP is closed); from then the RRSP monthly amount is redirected to TFSA.
 3. **Growth**: each balance × `(1 + annual_return)`.
 4. **Pensions** (only in retirement years — a deliberate simplification): QPP
    = user's age-65 figure × `qpp_adjustment(start_age)` × `(1+inflation)^offset`
@@ -55,27 +58,39 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 5. **Income need** (retirement years): the monthly target declines linearly via
    `income_fraction(p, age)` from 1.0 at `retirement_age` to
    `end_income_ratio` (default 0.6) at `end_age`, inflation-indexed.
-6. **Taxation**: CPP (RPC) and OAS (PSV) are **fully taxable** at the flat
-   `tax_rate`, so the after-tax income gap from accounts is
-   `max(0, target × 12 − (CPP + OAS) × (1 − tax_rate))`.
-7. **Withdrawals** (if gap > 0): non-registered first (untaxed in this model)
-   → RRSP/FERR grossed up at flat `tax_rate`, with the FERR minimum as a
-   **floor** on the FERR withdrawal (if the minimum exceeds the need, the
-   after-tax surplus is reinvested in TFSA) → TFSA last. If accounts run dry,
+6. **Taxation** (automatic, no inputs — see `tax.py`): taxable income =
+   `CPP + gross OAS + RRSP/FERR withdrawal` (gross OAS is taxable even when
+   clawed back). Tax = federal brackets (2026: 14/20.5/26/29/33%) + Quebec
+   brackets (14/19/24/25.75%) on taxable income, minus non-refundable credits
+   (basic personal $16,452 fed / $18,952 QC at 14%/14%; age 65+ $9,208 fed
+   / $3,986 QC with phase-outs; pension-income $2,000 fed / $3,541 QC on FERR
+   withdrawals only) and the Quebec abatement (16.5% of the basic federal
+   tax). All 2026 amounts are indexed by `(1+inflation)^(year − 2026)`.
+7. **Withdrawals** (retirement years): non-registered first (untaxed in this
+   model) → RRSP/FERR grossed up by `_solve_rrsp_gross()` — a Newton-style
+   fixed point on the *marginal burden rate* (income tax + OAS recovery) that
+   solves `CPP + net OAS + gross − tax = after-tax need` (converges to
+   <$0.01, clamped to the RRSP balance) — with the FERR minimum as a **floor**
+   on the FERR withdrawal (if the minimum exceeds the need, the after-tax
+   surplus is reinvested in TFSA) → TFSA last. If accounts run dry,
    `shortfall` records the unmet gap for that year (first such year = the
-   **exhaustion year**). If gap ≤ 0 but a FERR minimum exists (working past
-   71, or pensions cover the target after tax), the minimum is still withdrawn
-   and its after-tax amount goes to TFSA.
+   **exhaustion year**). If the need is already covered but a FERR minimum
+   exists (working past the conversion age, or pensions cover the target after
+   tax), the
+   minimum is still withdrawn and its after-tax amount goes to TFSA.
 8. **Monte Carlo**: 1,000 sims, `random.Random(seed=42)`, lognormal annual
    returns `exp(ln(1+r) − 0.5σ² + σ·z) − 1`. Tracks per-year total balances
    (for the P5–P95 band), balance at retirement age, balance at end age, and
    success = never had `shortfall > 0`. Percentiles are nearest-rank.
-9. **Detail columns** (each projection row): `tax_paid` (flat rate × all
-   taxable income: CPP + OAS + gross RRSP/FERR withdrawal), `oas_clawback`
-   (gross OAS − net OAS), and `ferr_min` (mandatory minimum RRSP/FERR
-   withdrawal, 0 before 71). `step_year` returns a 9-tuple:
+9. **Detail columns** (each projection row): `tax_paid` (federal + Quebec
+   income tax on taxable income), `oas_clawback` (gross OAS − net OAS),
+   `ferr_min` (mandatory minimum RRSP/FERR withdrawal, 0 before the
+   conversion age),
+   `marginal_rate` (marginal income-tax+recovery rate on the year's income)
+   and `effective_rate` = `(tax_paid + oas_clawback) / taxable`. `step_year`
+   returns an 11-tuple:
    `(balances, withdrawal, shortfall, cpp, oas, target_monthly, tax_paid,
-   oas_clawback, ferr_min)`.
+   oas_clawback, ferr_min, marginal_rate, effective_rate)`.
 
 ## Key statutory values (all sourced in `constants.py`)
 
@@ -85,28 +100,61 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   70, 1.588 at 72. Since 2026, QPP deferral runs to 72 (max +58.8%); CPP still
   caps at 70.
 - OAS max 65–74, 2025: **$734.95** (indexed quarterly). Defer to 70 = +36%.
-  Clawback (ITA s. 180.2): 15% of net income above the threshold (2025:
-  $93,454, ages 65–74; fully clawed by ~$151,959), capped at OAS. The model
-  **indexes the threshold to inflation** each year and **iterates the estimate
-  to a fixed point** (clawback → lower OAS → higher RRSP/FERR withdrawal →
-  higher income → higher clawback). Income proxy = CPP + gross OAS + estimated
-  gross RRSP/FERR withdrawal; ignores untaxed non-registered/TFSA drawdown and
-  the real-world one-year assessment lag (documented approximation).
+  Clawback (ITA s. 180.2): 15% of net income above the threshold (2026:
+  $95,323, based on 2026 income), capped at OAS. The model
+  **indexes the threshold to inflation** each year and **solves the clawback
+  and the RRSP/FERR withdrawal together to a fixed point** (clawback → lower
+  OAS → higher withdrawal → higher income → higher clawback). Income proxy =
+  CPP + gross OAS + gross RRSP/FERR withdrawal; ignores untaxed
+  non-registered/TFSA drawdown and the real-world one-year assessment lag
+  (documented approximation).
 - FERR minimum factors: 71→5.28%, 72→5.40%, 73→5.53% … 94→18.79%, 95+→20.00%
-  (ITR s. 7308; ages < 71 use `1/(90 − age)`).
-- Defaults: return 7%, inflation 2.5%, volatility 10%, escalation 0%, flat
-  tax 30% (combined QC+fed effective), income at end age 60% (linear decline),
-  1,000 sims, seed 42.
+  (ITR s. 7308; ages < 71 use `1/(90 − age)`). The RRSP converts to a FERR at
+  the conversion age (default: retirement age, e.g. 59; deadline 71) — FERR
+  payments then qualify for the pension-income credits, and the minimums (and
+  TFSA redirect of RRSP contributions) start from that age.
+- Income tax, 2026 (all in `constants.py`, sourced to DT Max/TaxTips/
+  Wealthsimple/Revenu Québec): federal brackets 14%→$58,523 (2026 budget cut
+  from 14.5%), 20.5%→$117,045, 26%→$181,440, 29%→$258,482, 33%+; Quebec
+  14%→$54,345, 19%→$108,680, 24%→$132,245, 25.75%+. Credit rate 14% federal
+  (follows the lowest bracket) / 14% Quebec. BPA $16,452 fed (phased to
+  $14,829 over $181,440–$258,482) / $18,952 QC. Age 65+ $9,208 fed (15%
+  phase-out above $46,432, gone at ~$107,819) / $3,986 QC. Pension income
+  $2,000 fed / $3,541 QC on FERR withdrawals only. Quebec abatement 16.5% of
+  the basic federal tax — i.e. of the federal tax AFTER non-refundable
+  credits are deducted (credits come first on Schedule 1, so the abatement
+  reduces the value of federal credits for QC residents; verified against
+  TaxTips and calculqc.ca).
+- Quebec line-361 credits — mechanics VERIFIED against the actual Schedule B
+  form (TP-1.D.B-V 2025-12, downloaded and read 2026-09-01; the 2026 form is
+  not yet released, so 2026 amounts are indexed from it): the age ($3,986)
+  and retirement-income (eligible pension income × 1.25, max $3,541) amounts
+  are summed, then reduced by **18.75% of (family income − $42,955)** (form
+  lines 18/30/31); no entitlement once that excess exceeds $66,025 (single;
+  indexed). The living-alone amount ($2,172) is intentionally not modeled (no
+  marital-status input). "Family income" is proxied by the taxpayer's own
+  taxable income.
+- Defaults: return 7%, inflation 2.5%, volatility 10%, escalation 0%, income
+  at end age 60% (linear decline), 1,000 sims, seed 42. No tax default — tax
+  is automatic.
 
 ## Locked-in decisions (do not silently change without asking)
 
 - **Streamlit + Plotly** app, thin UI over pure functions.
 - **CSV manual import** to Google Sheets — no Google integration by design.
+- **RRSP → FERR at the retirement age by default** (conversion age
+  user-adjustable 55–71, capped at the statutory deadline of 71); the
+  pension-income credits, FERR minimums and RRSP-contribution redirect all
+  start at the conversion age.
 - **Quebec-specific**: RPC (QPP), PSV (OAS), REER/CELI/FERR terminology;
   bilingual labels, English primary.
-- **Flat effective tax rate** on all taxable income — RRSP/FERR withdrawals
-  plus CPP (RPC) and OAS (PSV), both fully taxable in Canada; non-registered
-  gains untaxed (all noted in summary.csv and README).
+- **Automatic progressive income tax** (no tax inputs): 2026 federal + Quebec
+  brackets and credits (basic personal, age 65+, pension income), the Quebec
+  abatement, and the OAS recovery — all indexed to the user's inflation
+  assumption from 2026. Non-registered gains untaxed (all noted in summary.csv
+  and README). Single-taxpayer approximations: Quebec "family income"
+  phase-outs use the taxpayer's own income; the Quebec living-alone credit is
+  not modeled; working years are not taxed.
 - Pensions counted only from the retirement year onward.
 - **Linear income decline**: retirement spending falls linearly from 100% at
   retirement to `end_income_ratio` (default 60%) at end age, in real dollars.
@@ -116,25 +164,31 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 
 ## Verification status
 
-- 22/22 pytest tests passing (model math + CSV export; includes exact
-  exhaustion-year, FERR-minimum, linear income-decline, tax/clawback column,
-  and MC seed reproducibility cases).
+- 47/47 pytest tests passing (17 tax unit tests + model/CSV tests; includes
+  exact bracket/credit/abatement math, the TP-1.D.B-V line-361 phase-out,
+  exhaustion-year, FERR-minimum (incl. early conversion), linear
+  income-decline, tax/clawback columns, MC seed reproducibility).
 - Streamlit `AppTest` smoke test: default run, widget change (QPP start 70),
   and invalid-input path — no exceptions.
 - Real server boot: HTTP 200, `/_stcore/health` → `ok`.
 - Behavioral sanity confirmed: deferring QPP 65→70 raises success rate;
   clawback reduces OAS exactly by 15% of income above threshold; QPP@60/65/70
-  show the expected portfolio-drawdown tradeoff on tight portfolios.
+  show the expected portfolio-drawdown tradeoff on tight portfolios; the
+  default scenario's marginal tax rate at retirement (~36%) matches the
+  expected federal 20.5% (net of the 16.5% abatement) + Quebec 19% at the
+  retirement-year income.
 
 ## Likely next steps / notes
 
 - The user asked about **changing the AI model** running the session — that is
   a harness-level setting, not a code change; this file exists to make a fresh
   session/context fully self-sufficient.
-- Possible future model changes: employer pension (RPP/DB), spousal accounts,
-  tax brackets instead of flat rate, capital-gains on non-registered, GIS, or
-  a different spend-down order. Any change should update `constants.py` (if
-  statutory), `projection.py`, the tests, and README together, and re-run
-  `pytest`.
+- Possible future model changes: employer pension (RPP/DB), spousal accounts
+  (which would unlock pension-income splitting and the Quebec living-alone
+  credit — $2,172 in 2026), capital-gains on non-registered, GIS, the 75+ OAS
+  amount boost (higher OAS and full-clawback point for ages 75+), or a
+  different spend-down order. Any change should update `constants.py` (if
+  statutory), the model (`tax.py`/`projection.py`), the tests, and
+  README/HANDOFF together, and re-run `pytest`.
 - `app.py` uses modern Streamlit API (`width="stretch"`, not deprecated
   `use_container_width`). Watch for Streamlit API deprecations on upgrades.

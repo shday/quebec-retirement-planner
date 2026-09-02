@@ -6,8 +6,10 @@ and download CSVs to import into **Google Sheets** manually.
 
 - Accounts: **REER (RRSP)**, **CELI (TFSA)**, non-registered
 - Pensions: **RPC (QPP)**, **PSV (OAS)** — with statutory start-age adjustments
-- Tax: flat effective rate on REER/FERR withdrawals (Quebec + federal combined)
-- RRSP converts to a **FERR** at 71 with mandatory minimum withdrawals (ITR s. 7308)
+- Tax: automatic progressive income tax — federal + Quebec 2026 brackets with
+  basic personal, age 65+ and pension-income credits, the Quebec abatement,
+  and the OAS recovery tax (indexed to inflation)
+- RRSP converts to a **FERR** at the chosen conversion age (default: retirement age; statutory deadline 71) with mandatory minimum withdrawals (ITR s. 7308)
 - Monte Carlo: 1,000 simulations, fixed seed, with a P5–P95 band chart
 - **No Google API, no OAuth, no accounts** — everything runs locally; the CSVs
   are yours to upload wherever you like.
@@ -45,13 +47,24 @@ Each year from your current age to your end age:
   clawback). The **income target declines linearly** from 100% at the
   retirement age down to the "income at end age" percentage at your end age
   (in today's dollars, then inflation-indexed). CPP (RPC) and OAS (PSV) are
-  **fully taxable**, so only their after-tax value counts toward the target;
-  the remaining after-tax gap is withdrawn from
-  **non-registered → REER/FERR (tax-grossed-up) → CELI**.
-- **Age 71+**: the RRSP is treated as a FERR. The mandatory minimum withdrawal
-  (ITR s. 7308 factor × opening balance) is a floor on the REER/FERR
+  **fully taxable**; the remaining after-tax income need is withdrawn from
+  **non-registered → REER/FERR (tax-grossed-up) → CELI**, with the REER/FERR
+  gross-up solved against the real progressive tax function.
+- **Tax (automatic)**: income tax is computed each year from the **2026
+  federal brackets (14%–33%)** and **Quebec brackets (14%–25.75%)**, indexed
+  to your inflation assumption from 2026, minus non-refundable credits (basic
+  personal amounts, age 65+ amounts, pension-income amounts on FERR
+  withdrawals) and the **Quebec abatement** (16.5% of the basic federal tax).
+  The OAS recovery tax is applied separately. There are no tax inputs — the
+  model does it all; the projection shows the resulting **marginal** and
+  **effective** tax rates each year.
+- **From the conversion age**: the RRSP is treated as a FERR (RRIF). The
+  mandatory minimum withdrawal (ITR s. 7308 factor × opening balance — the
+  early-conversion factor 1/(90−age) below 71) is a floor on the REER/FERR
   withdrawal; if the minimum exceeds the income need, the after-tax surplus is
-  reinvested in the TFSA (simplification).
+  reinvested in the TFSA (simplification). FERR payments are also eligible
+  pension income, so the pension-income tax credits apply from the conversion
+  age.
 - If accounts run out before your end age, the first shortfall year is flagged
   as the **exhaustion year**.
 
@@ -72,9 +85,11 @@ money).
 | RRSP, TFSA, Non-registered | End-of-year account balances (CAD) |
 | Total | Sum of the three accounts |
 | Withdrawal | Gross cash withdrawn from accounts during the year (CAD) |
-| FERR minimum | Mandatory minimum RRSP/FERR withdrawal for the year (0 before 71) |
+| FERR minimum | Mandatory minimum RRSP/FERR withdrawal for the year (0 before the conversion age) |
 | Shortfall | Income need that could not be covered (0 if fully funded) |
-| Tax paid | Income tax on all taxable income — CPP (RPC) + OAS (PSV) + RRSP/FERR withdrawals (flat effective rate); non-registered and TFSA untaxed |
+| Tax paid | Federal + Quebec income tax on taxable income — CPP (RPC) + gross OAS (PSV) + RRSP/FERR withdrawals (progressive brackets, credits, abatement); non-registered and TFSA untaxed |
+| Marginal rate | Marginal income-tax + OAS-recovery rate on the year's taxable income (%) |
+| Effective rate | (Tax paid + OAS clawback) ÷ taxable income (%) |
 | CPP (RPC), OAS (PSV) | Pension income for the year (OAS is net of clawback) |
 | OAS clawback | Amount OAS was reduced by the recovery tax (0 if no clawback) |
 
@@ -86,7 +101,8 @@ money).
 | Income at end age (% of retirement) | 60% (linear decline) | Your own assumption |
 | QPP (RPC) monthly at 65 | $1,395.25 (2025 max) | [Retraite Québec — use your own statement figure](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
 | OAS (PSV) monthly at 65 | $734.95 (2025 max, 65–74) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
-| Tax rate on taxable income | 30% effective (combined QC+fed) | Set your own marginal/effective rate |
+| RRSP → FERR conversion age | At retirement (deadline 71) | Your own plan (early conversion earns the pension-income credits sooner) |
+| Income tax | Automatic (no inputs) | 2026 federal + Quebec brackets/credits, indexed to inflation |
 | Return / inflation / volatility | 7% / 2.5% / 10% | Your own assumptions |
 
 QPP start age 60–72 uses the statutory adjustment shared with CPP since the
@@ -96,21 +112,35 @@ OAS can start at 65 or be deferred to 70 for **+36%**.
 
 ## Simplifications & scope
 
-- **Flat effective tax rate** on all taxable income — RRSP/FERR withdrawals
-  plus CPP (RPC) and OAS (PSV), both of which are fully taxable in Canada; no
-  marginal brackets, no provincial breakdown. Non-registered account gains are
-  untaxed by default. TFSA withdrawals are tax-free.
-- OAS clawback (ITA s. 180.2): 15% of net income above the threshold, capped
-  at OAS received. The model indexes the threshold (2025: $93,454, ages
-  65–74) to inflation each year and iterates the estimate to a fixed point
-  (the clawback reduces OAS, raising the RRSP/FERR withdrawal and income).
-  The income proxy uses CPP + gross OAS + the estimated gross RRSP/FERR
-  withdrawal; it ignores untaxed non-registered/TFSA drawdown, and the
-  real-world clawback is assessed on the previous year's income.
+- **Progressive income tax (automatic)**: 2026 federal (14%–33%) and Quebec
+  (14%–25.75%) brackets on taxable income = CPP (RPC) + gross OAS (PSV) +
+  RRSP/FERR withdrawals; minus the basic personal amounts, age 65+ amounts,
+  pension-income amounts (on FERR withdrawals only) and the Quebec abatement
+  (16.5% of the basic federal tax — the federal tax after non-refundable
+  credits are deducted, which reduces the value of federal credits for Quebec
+  residents). All amounts are indexed to your inflation
+  assumption from the 2026 base year. The Quebec age ($3,986) and
+  retirement-income (eligible income × 1.25, max $3,541) credits are summed
+  and reduced by 18.75% of family income above $42,955, exactly as on the
+  TP-1.D.B-V Schedule B form. Single-taxpayer approximations: "net family
+  income" phase-outs use your own taxable income, and the Quebec living-alone
+  credit ($2,172) is not modeled (no marital-status input; conservative). The
+  RRSP/FERR gross-up is solved against the real tax function (brackets,
+  credits and the OAS recovery together) by a fixed-point iteration. Working
+  years are not taxed (contributions only).
+- **OAS clawback (ITA s. 180.2)**: 15% of net income above the threshold,
+  capped at OAS received. The model indexes the threshold (2026: $95,323,
+  based on 2026 income) to inflation each year and solves the clawback and the RRSP/FERR
+  withdrawal together to a fixed point (the clawback reduces OAS, raising the
+  withdrawal and income). The income proxy uses CPP + gross OAS + the gross
+  RRSP/FERR withdrawal; it ignores untaxed non-registered/TFSA drawdown, and
+  the real-world clawback is assessed on the previous year's income.
+- Non-registered account gains are untaxed by default (capital-gains modeling
+  is a future change). TFSA withdrawals are tax-free.
 - Pensions are counted only from the retirement year onward.
 - The income decline is linear in real (today's) dollars and one inflation rate
   is applied to all years (no healthcare-specific escalation).
-- RRSP contributions stop at 71 (redirected to TFSA); TFSA room limits and
+- RRSP contributions stop at the conversion age (redirected to TFSA); TFSA room limits and
   GIS are not modeled.
 - Published per-age pension maximums can differ slightly from factor-based
   estimates because of the CPP/QPP enhancement phase-in — always prefer your
@@ -122,16 +152,18 @@ OAS can start at 65 or be deferred to 70 for **+36%**.
 - [Retraite Québec — Québec Pension Plan](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan)
 - [Manulife — When to start taking CPP/QPP and OAS](https://www.manulifewealth.ca/clients/en/viewpoints/investor-education/when-to-start-taking-cpp-qpp-and-oas-benefits)
 - [FERR (RRIF) minimum withdrawal factors — ITR s. 7308](https://catax.tools/rrif-minimum-withdrawal-calculator/) and [MoneySense](https://www.moneysense.ca/save/retirement/rrif-and-lif-withdrawal-rates/)
-- OAS repayment (clawback) 2025 threshold: [Wealthsimple](https://www.wealthsimple.com/en-ca/learn/oas-clawback-explained)
+- OAS repayment (clawback) 2026 threshold: [Wealthsimple](https://www.wealthsimple.com/en-ca/learn/oas-clawback-explained)
+- Federal/Quebec 2026 tax brackets, credits and abatement: [DT Max — Tax brackets and rates (2026)](https://support.drtax.ca/dtmax/eng/kb/dtmax/Government%20documentation/brackets_t326.htm), [TaxTips — 2026 Non-Refundable Credits](https://www.taxtips.ca/nrcredits/tax-credits-2026.htm), [TaxTips — Quebec credits & indexation](https://www.taxtips.ca/qctax/quebec-tax-credits-and-deductions.htm), [Wealthsimple — 2026 Quebec tax calculator](https://www.wealthsimple.com/en-ca/tool/tax-calculator/quebec), [Revenu Québec — Line 361](https://www.revenuquebec.ca/en/citizens/income-tax-return/completing-your-income-tax-return/how-to-complete-your-income-tax-return/line-by-line-help/350-to-398-1-non-refundable-tax-credits/line-361/), [Revenu Québec — Schedule B (TP-1.D.B-V)](https://www.revenuquebec.ca/documents/en/formulaires/tp/2025-12/TP-1.D.B-V%282025-12%29.pdf)
 
 ## Project layout
 
 ```
 app.py            Streamlit UI (sidebar inputs, results, downloads)
 projection.py     Deterministic model + seeded Monte Carlo (pure, testable)
+tax.py            Progressive federal + Quebec income tax model (pure, testable)
 export.py         Projection → CSV strings / zip bytes
-constants.py      Statutory constants (FERR minimums, QPP/OAS factors, defaults)
-tests/            pytest suite (model + export)
+constants.py      Statutory constants (FERR minimums, QPP/OAS factors, tax 2026, defaults)
+tests/            pytest suite (tax, model, export)
 ```
 
 ## Running the tests

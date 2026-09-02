@@ -14,7 +14,14 @@ import plotly.graph_objects as go
 
 import constants as C
 import export
-from projection import PlanInputs, build_result, deterministic_projection, monte_carlo, validate
+from projection import (
+    PlanInputs,
+    build_result,
+    deterministic_projection,
+    ferr_conversion_age,
+    monte_carlo,
+    validate,
+)
 
 st.set_page_config(page_title="Quebec Retirement Planner", page_icon="🍁", layout="wide")
 
@@ -70,14 +77,30 @@ with st.sidebar:
     oas_options = (65, C.OAS_DEFERRAL_MAX_AGE)  # statutory choices
     oas_index = oas_options.index(C.DEFAULT_OAS_START_AGE) if C.DEFAULT_OAS_START_AGE in oas_options else 0
     oas_start = st.radio("OAS (PSV) start age", options=oas_options, index=oas_index, horizontal=True)
-    oas_clawback = st.checkbox("Apply OAS (PSV) clawback (15% above ~$93,454/yr)", value=C.DEFAULT_OAS_CLAWBACK)
+    oas_clawback = st.checkbox("Apply OAS (PSV) clawback (15% above ~$95,323/yr)", value=C.DEFAULT_OAS_CLAWBACK)
+    convert_at_retirement = st.checkbox(
+        "Convert RRSP (REER) to FERR (RRIF) at retirement",
+        value=C.DEFAULT_FERR_CONVERSION_AGE is None,
+    )
+    st.caption(
+        "FERR minimum withdrawals (ITR s. 7308) and the pension-income tax "
+        "credits start at the conversion age; the RRSP must be converted by 71."
+    )
+    if convert_at_retirement:
+        ferr_conv_age_input: int | None = None
+    else:
+        ferr_conv_age_input = st.number_input(
+            "FERR (RRIF) conversion age",
+            C.FERR_CONVERSION_MIN_AGE, C.FERR_CONVERSION_AGE, C.FERR_CONVERSION_AGE, step=1, format="%d",
+        )
 
     st.header("🧾 Tax")
-    tax_rate = st.number_input(
-        "Effective tax rate on taxable income (%)",
-        0.0, 60.0, C.DEFAULT_TAX_RATE * 100, step=1.0, format="%.1f",
+    st.caption(
+        "Income tax is modeled automatically: progressive federal (14%–33%) "
+        "and Quebec (14%–25.75%) brackets, 2026, indexed to inflation — with the "
+        "basic personal, age 65+ and pension-income credits, the Quebec abatement, "
+        "and the OAS (PSV) recovery tax. No tax inputs needed."
     )
-    st.caption("Flat combined Quebec + federal rate; applies to RRSP/FERR withdrawals and to CPP (RPC) + OAS (PSV), which are fully taxable.")
 
     st.header("🎲 Monte Carlo")
     st.caption(f"{C.DEFAULT_MONTE_CARLO_SIMS} simulations, fixed seed {C.DEFAULT_SEED}.")
@@ -107,7 +130,7 @@ p = PlanInputs(
     oas_monthly=float(oas_monthly),
     oas_start_age=int(oas_start),
     oas_clawback=bool(oas_clawback),
-    tax_rate=tax_rate / 100.0,
+    ferr_conversion_age=ferr_conv_age_input,
 )
 
 errors = validate(p)
@@ -136,7 +159,7 @@ c1.metric("Median balance at retirement (MC)", f"${mc['retirement_balance'][50]:
 c2.metric("Success rate (never ran out)", f"{mc['success_pct']:.1f}%")
 c3.metric("Balance at retirement (deterministic)", f"${det_retirement_balance:,.0f}")
 c4.metric("Exhaustion year", summary["Exhaustion year (deterministic)"])
-c5.metric("FERR conversion year", "71" if p.end_age >= 71 else "N/A")
+c5.metric("FERR conversion year", str(ferr_conversion_age(p)) if p.end_age >= ferr_conversion_age(p) else "N/A")
 
 st.divider()
 
@@ -216,6 +239,8 @@ display_rows = [
         "FERR minimum": round(r["ferr_min"], 0),
         "Shortfall": round(r["shortfall"], 0),
         "Tax paid": round(r["tax_paid"], 0),
+        "Marginal rate": round(r["marginal_rate"] * 100, 1),
+        "Effective rate": round(r["effective_rate"] * 100, 1),
         "CPP (RPC)": round(r["cpp"], 0),
         "OAS (PSV)": round(r["oas"], 0),
         "OAS clawback": round(r["oas_clawback"], 0),
@@ -259,6 +284,8 @@ with key_col:
             "Years of income coverage",
             "QPP (RPC) monthly at start age, first year (CAD)",
             "OAS (PSV) monthly at start age, first year (CAD)",
+            "Marginal tax rate at retirement, first year (%)",
+            "Effective tax rate at retirement, first year (%)",
         }
     ]
     st.dataframe(key_rows, hide_index=True, width="stretch")

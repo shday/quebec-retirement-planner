@@ -21,7 +21,8 @@ def test_projection_csv_headers_rows_and_raw_numbers():
     assert rows[0] == [
         "Age", "Year", "Income %", "Income target", "RRSP", "TFSA",
         "Non-registered", "Total", "Withdrawal", "FERR minimum", "Shortfall",
-        "Tax paid", "CPP (RPC)", "OAS (PSV)", "OAS clawback",
+        "Tax paid", "Marginal rate", "Effective rate", "CPP (RPC)",
+        "OAS (PSV)", "OAS clawback",
     ]
     assert len(rows) == len(res["projection"]) + 1
     first = rows[1]
@@ -41,8 +42,10 @@ def test_projection_csv_headers_rows_and_raw_numbers():
     assert float(first[9]) == pytest.approx(p0["ferr_min"])
     assert float(first[10]) == pytest.approx(p0["shortfall"])
     assert float(first[11]) == pytest.approx(p0["tax_paid"])
-    assert float(first[12]) == pytest.approx(p0["cpp"])
-    assert float(first[14]) == pytest.approx(p0["oas_clawback"])
+    assert float(first[12]) == pytest.approx(p0["marginal_rate"] * 100)
+    assert float(first[13]) == pytest.approx(p0["effective_rate"] * 100)
+    assert float(first[14]) == pytest.approx(p0["cpp"])
+    assert float(first[16]) == pytest.approx(p0["oas_clawback"])
 
 
 def test_projection_csv_reports_shortfall_rows():
@@ -53,13 +56,15 @@ def test_projection_csv_reports_shortfall_rows():
         nonreg_balance=0, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=2_000, tax_rate=0.30,
+        target_monthly_income=2_000,
     )
     res = compute_all(p)
     rows = _rows(projection_csv(res))
     short_rows = [r for r in rows[1:] if float(r[10]) > 0]
     assert short_rows, "expected at least one shortfall row"
-    assert float(short_rows[0][10]) == pytest.approx(2_000 * 12 - 10_000 * 0.70)
+    # The $10k RRSP withdrawal is below the basic personal amounts (no tax),
+    # so it covers $10k of the $24k need.
+    assert float(short_rows[0][10]) == pytest.approx(2_000 * 12 - 10_000)
 
 
 def test_summary_csv_layout():
