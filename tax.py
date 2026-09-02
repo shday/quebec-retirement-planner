@@ -1,7 +1,7 @@
 """Progressive income tax for a single Quebec retiree: federal + Quebec.
 
 The projection used to apply one flat "effective tax rate" to all taxable
-income (RRSP/FERR withdrawals plus CPP (QPP) and OAS (PSV)). This module
+income (RRSP/RRIF withdrawals plus CPP (QPP) and OAS). This module
 replaces that with the statutory 2026 structure, indexed to inflation from the
 2026 base year:
 
@@ -9,7 +9,7 @@ replaces that with the statutory 2026 structure, indexed to inflation from the
   and Quebec brackets (14% to 25.75%).
 - Non-refundable credits: basic personal amounts, age amount (65+), and the
   pension-income amounts (federal $2,000 / Quebec $3,541 on eligible pension
-  income - FERR/RRIF withdrawals and annuities, NOT CPP/QPP/OAS; the Quebec
+  income - RRIF/RRIF withdrawals and annuities, NOT CPP/QPP/OAS; the Quebec
   amount is eligible income x 1.25, capped at $3,541, and the Quebec age +
   retirement amounts are summed and then reduced by 18.75% of family income
   above $42,955 per the TP-1.D.B-V Schedule B).
@@ -42,7 +42,7 @@ from constants import (
     FEDERAL_BRACKETS_2026,
     FEDERAL_CREDIT_RATE,
     FEDERAL_PENSION_AMOUNT_MAX,
-    FERR_PENSION_CREDIT_ELIGIBLE_AGE,
+    RRIF_PENSION_CREDIT_ELIGIBLE_AGE,
     OAS_CLAWBACK_RATE,
     OAS_CLAWBACK_THRESHOLD,
     QUEBEC_ABATEMENT_RATE,
@@ -129,7 +129,7 @@ def federal_credits(
         credits += age_amount
 
     # Pension income amount: lesser of eligible pension income or the cap.
-    # Eligible pension income = FERR withdrawals (age >= 71 in this model).
+    # Eligible pension income = RRIF withdrawals (age >= 71 in this model).
     if pension_income > 0.0:
         credits += min(pension_income, scale(FEDERAL_PENSION_AMOUNT_MAX, inflation_rate, year))
 
@@ -250,9 +250,9 @@ def marginal_burden_rate(
     return max(0.0, min(0.95, (burden_high - burden_low) / (high - low)))
 
 
-def eligible_pension_income(age: int, rrsp_gross: float, conv_age: int = FERR_PENSION_CREDIT_ELIGIBLE_AGE) -> float:
-    """Portion of the RRSP/FERR withdrawal that counts for the pension-income
-    credits: only FERR (RRIF) payments qualify, i.e. from the conversion age
+def eligible_pension_income(age: int, rrsp_gross: float, conv_age: int = RRIF_PENSION_CREDIT_ELIGIBLE_AGE) -> float:
+    """Portion of the RRSP/RRIF withdrawal that counts for the pension-income
+    credits: only RRIF payments qualify, i.e. from the conversion age
     onward; lump-sum RRSP withdrawals (before conversion) and CPP/QPP/OAS do
     not."""
     if age >= conv_age:

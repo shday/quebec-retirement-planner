@@ -1,18 +1,18 @@
-"""Deterministic and Monte Carlo retirement projection for Quebec (RPC/PSV/REER/CELI/FERR).
+"""Deterministic and Monte Carlo retirement projection for Quebec (QPP/OAS/RRSP/TFSA/RRIF).
 
 The model is deliberately simple and transparent:
-- Three accounts: RRSP (REER, pre-tax), TFSA (CELI, tax-free), non-registered.
-- Pensions (only during retirement years): QPP (RPC) and OAS (PSV), both
+- Three accounts: RRSP (RRSP, pre-tax), TFSA (TFSA, tax-free), non-registered.
+- Pensions (only during retirement years): QPP and OAS, both
   inflation-indexed from today, with statutory start-age adjustments and an
   optional OAS clawback approximation.
-- RRSP converts to a FERR at the chosen conversion age (default: the
+- RRSP converts to an RRIF at the chosen conversion age (default: the
   retirement age; statutory deadline 71) with mandatory minimum withdrawals
   (Income Tax Regulations s. 7308); any after-tax surplus from a minimum that
   exceeds the income need is reinvested in the TFSA (simplification).
-- Withdrawals come from non-registered first, then RRSP/FERR (grossed up for
+- Withdrawals come from non-registered first, then RRSP/RRIF (grossed up for
   tax), then TFSA.
 - Income tax is modeled automatically from the 2026 federal + Quebec
-  progressive brackets and non-refundable credits (see tax.py): the RRSP/FERR
+  progressive brackets and non-refundable credits (see tax.py): the RRSP/RRIF
   gross-up is solved against the real tax function (brackets, basic personal,
   age 65+ and pension-income credits, the Quebec abatement, and the OAS
   recovery tax), indexed to inflation from 2026.
@@ -40,7 +40,7 @@ from constants import (
     DEFAULT_CURRENT_AGE,
     DEFAULT_END_AGE,
     DEFAULT_END_INCOME_RATIO,
-    DEFAULT_FERR_CONVERSION_AGE,
+    DEFAULT_RRIF_CONVERSION_AGE,
     DEFAULT_INFLATION,
     DEFAULT_MONTE_CARLO_SIMS,
     DEFAULT_NONREG_BALANCE,
@@ -56,8 +56,8 @@ from constants import (
     DEFAULT_TFSA_BALANCE,
     DEFAULT_TFSA_MONTHLY,
     DEFAULT_VOLATILITY,
-    FERR_CONVERSION_AGE,
-    FERR_CONVERSION_MIN_AGE,
+    RRIF_CONVERSION_AGE,
+    RRIF_CONVERSION_MIN_AGE,
     OAS_MAX_2025,
     OAS_DEFERRAL_MAX_AGE,
     OAS_DEFERRAL_PER_MONTH,
@@ -66,7 +66,7 @@ from constants import (
     QPP_MAX_AT_65_2025,
     QPP_MAX_START_AGE,
     QPP_MIN_START_AGE,
-    ferr_min_factor,
+    rrif_min_factor,
 )
 from tax import (
     eligible_pension_income,
@@ -113,7 +113,7 @@ class PlanInputs:
     oas_monthly: float = OAS_MAX_2025                              # today's dollars, at 65
     oas_start_age: int = DEFAULT_OAS_START_AGE
     oas_clawback: bool = DEFAULT_OAS_CLAWBACK
-    ferr_conversion_age: int | None = DEFAULT_FERR_CONVERSION_AGE  # None = convert RRSP to FERR at retirement age (deadline 71)
+    rrif_conversion_age: int | None = DEFAULT_RRIF_CONVERSION_AGE  # None = convert RRSP to RRIF at retirement age (deadline 71)
 
     # Monte Carlo
     num_sims: int = DEFAULT_MONTE_CARLO_SIMS
@@ -161,17 +161,17 @@ def validate(p: PlanInputs) -> list[str]:
         errs.append(f"QPP start age must be between {QPP_MIN_START_AGE} and {QPP_MAX_START_AGE}.")
     if p.oas_start_age not in (65, OAS_DEFERRAL_MAX_AGE):
         errs.append("OAS start age must be 65 or 70.")
-    if p.ferr_conversion_age is not None and not FERR_CONVERSION_MIN_AGE <= p.ferr_conversion_age <= FERR_CONVERSION_AGE:
-        errs.append(f"FERR conversion age must be between {FERR_CONVERSION_MIN_AGE} and {FERR_CONVERSION_AGE}.")
+    if p.rrif_conversion_age is not None and not RRIF_CONVERSION_MIN_AGE <= p.rrif_conversion_age <= RRIF_CONVERSION_AGE:
+        errs.append(f"RRIF conversion age must be between {RRIF_CONVERSION_MIN_AGE} and {RRIF_CONVERSION_AGE}.")
     return errs
 
 
-def ferr_conversion_age(p: PlanInputs) -> int:
-    """The age the RRSP becomes a FERR (RRIF): the user's chosen conversion age
+def rrif_conversion_age(p: PlanInputs) -> int:
+    """The age the RRSP becomes a RRIF: the user's chosen conversion age
     or the retirement age when None, capped at the statutory deadline of 71
     (you cannot defer past Dec 31 of the year you turn 71)."""
-    age = p.retirement_age if p.ferr_conversion_age is None else p.ferr_conversion_age
-    return min(age, FERR_CONVERSION_AGE)
+    age = p.retirement_age if p.rrif_conversion_age is None else p.rrif_conversion_age
+    return min(age, RRIF_CONVERSION_AGE)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +224,7 @@ def _solve_rrsp_gross(
     rrsp_available: float,
     year: int,
 ) -> float:
-    """Solve the gross RRSP/FERR withdrawal whose after-tax proceeds (net of
+    """Solve the gross RRSP/RRIF withdrawal whose after-tax proceeds (net of
     income tax and the OAS recovery tax it triggers) cover after_tax_need.
 
     The after-tax cash identity is::
@@ -262,14 +262,14 @@ def step_year(
     """Advance one year for a given age.
 
     Returns (new_balances, withdrawal, shortfall, cpp_income, oas_income,
-    target_monthly, tax_paid, oas_clawback, ferr_min, marginal_rate,
+    target_monthly, tax_paid, oas_clawback, rrif_min, marginal_rate,
     effective_rate) where balances is (rrsp, tfsa, nonreg) at the end of the
     previous year, withdrawal is gross cash leaving the accounts during the
     year, target_monthly is the inflation-indexed monthly income target
     (already reduced by the linear income decline), tax_paid is the federal +
-    Quebec income tax on all taxable income (CPP + gross OAS + RRSP/FERR
+    Quebec income tax on all taxable income (CPP + gross OAS + RRSP/RRIF
     withdrawals - both pensions are fully taxable), oas_clawback is the OAS
-    recovery tax amount, ferr_min is the mandatory minimum RRSP/FERR
+    recovery tax amount, rrif_min is the mandatory minimum RRSP/RRIF
     withdrawal (0 before the conversion age), marginal_rate is the marginal
     income-tax+recovery rate on the settled income (used to gross up the
     withdrawal) and effective_rate is (tax_paid + oas_clawback) / taxable
@@ -277,12 +277,12 @@ def step_year(
     """
     rrsp, tfsa, nonreg = balances
     working = age < p.retirement_age
-    conv_age = ferr_conversion_age(p)
+    conv_age = rrif_conversion_age(p)
     infl = (1.0 + p.inflation_rate) ** year_offset
 
-    # FERR minimum is a percentage of the balance at the previous year-end,
+    # RRIF minimum is a percentage of the balance at the previous year-end,
     # from the conversion age onward (early conversion uses 1/(90-age)).
-    ferr_min = ferr_min_factor(age) * rrsp if age >= conv_age else 0.0
+    rrif_min = rrif_min_factor(age) * rrsp if age >= conv_age else 0.0
 
     # Contributions (only while working; the RRSP closes at the conversion age).
     if working:
@@ -322,16 +322,16 @@ def step_year(
     withdrawal += take
     remaining = need - take
 
-    # 2. RRSP/FERR: solve the gross-up against the real tax function. The FERR
+    # 2. RRSP/RRIF: solve the gross-up against the real tax function. The RRIF
     #    minimum is a floor on the withdrawal, even when there is no income gap.
     rrsp_gross = 0.0
-    if rrsp > MONEY_EPS and (remaining > MONEY_EPS or ferr_min > MONEY_EPS):
+    if rrsp > MONEY_EPS and (remaining > MONEY_EPS or rrif_min > MONEY_EPS):
         solved = (
             _solve_rrsp_gross(p, age, conv_age, cpp_income, oas_gross, remaining, rrsp, year)
             if remaining > MONEY_EPS
             else 0.0
         )
-        rrsp_gross = min(rrsp, max(solved, ferr_min))
+        rrsp_gross = min(rrsp, max(solved, rrif_min))
         rrsp -= rrsp_gross
         withdrawal += rrsp_gross
 
@@ -346,8 +346,8 @@ def step_year(
     marginal_rate = marginal_burden_rate(taxable, age, pension_income, oas_gross, p.inflation_rate, year)
     effective_rate = (tax_paid + oas_clawback) / taxable if taxable > MONEY_EPS else 0.0
 
-    # 4. After-tax accounting: pensions + RRSP/FERR after tax cover the need;
-    #    any surplus from the RRSP/FERR withdrawal (e.g. the minimum exceeded
+    # 4. After-tax accounting: pensions + RRSP/RRIF after tax cover the need;
+    #    any surplus from the RRSP/RRIF withdrawal (e.g. the minimum exceeded
     #    the need) is reinvested in the TFSA; TFSA covers the rest.
     shortfall = 0.0
     if rrsp_gross > MONEY_EPS:
@@ -382,7 +382,7 @@ def step_year(
         target_monthly,
         tax_paid,
         oas_clawback,
-        ferr_min,
+        rrif_min,
         marginal_rate,
         effective_rate,
     )
@@ -406,7 +406,7 @@ def deterministic_projection(p: PlanInputs) -> list[dict]:
             target_monthly,
             tax_paid,
             oas_clawback,
-            ferr_min,
+            rrif_min,
             marginal_rate,
             effective_rate,
         ) = step_year(p, age, balances, p.annual_return, offset, start_year + offset)
@@ -422,7 +422,7 @@ def deterministic_projection(p: PlanInputs) -> list[dict]:
                 "nonreg": balances[2],
                 "total": balances[0] + balances[1] + balances[2],
                 "withdrawal": withdrawal,
-                "ferr_min": ferr_min,
+                "rrif_min": rrif_min,
                 "shortfall": shortfall,
                 "tax_paid": tax_paid,
                 "marginal_rate": marginal_rate,
@@ -471,7 +471,7 @@ def monte_carlo(p: PlanInputs, num_sims: int | None = None, seed: int | None = N
         for offset, age in enumerate(years):
             # Lognormal annual return with mean p.annual_return and std p.volatility.
             r = math.exp(mu - 0.5 * sigma * sigma + sigma * rng.gauss(0.0, 1.0)) - 1.0
-            balances, _wd, shortfall, _cpp, _oas, _target, _tax, _claw, _ferr, _marg, _eff = step_year(
+            balances, _wd, shortfall, _cpp, _oas, _target, _tax, _claw, _rrif, _marg, _eff = step_year(
                 p, age, balances, r, offset, start_year + offset
             )
             year_totals[offset].append(balances[0] + balances[1] + balances[2])
@@ -529,10 +529,10 @@ def build_result(p: PlanInputs, rows: list[dict], mc: dict) -> dict:
         ("Current age", p.current_age),
         ("Retirement age", p.retirement_age),
         ("End age (life expectancy)", p.end_age),
-        ("RRSP (REER) balance (CAD)", p.rrsp_balance),
-        ("RRSP (REER) monthly contribution (CAD)", p.rrsp_monthly),
-        ("TFSA (CELI) balance (CAD)", p.tfsa_balance),
-        ("TFSA (CELI) monthly contribution (CAD)", p.tfsa_monthly),
+        ("RRSP balance (CAD)", p.rrsp_balance),
+        ("RRSP monthly contribution (CAD)", p.rrsp_monthly),
+        ("TFSA balance (CAD)", p.tfsa_balance),
+        ("TFSA monthly contribution (CAD)", p.tfsa_monthly),
         ("Non-registered balance (CAD)", p.nonreg_balance),
         ("Non-registered monthly contribution (CAD)", p.nonreg_monthly),
         ("Annual return (%)", _fmt_pct(p.annual_return)),
@@ -541,13 +541,13 @@ def build_result(p: PlanInputs, rows: list[dict], mc: dict) -> dict:
         ("Contribution escalation (%)", _fmt_pct(p.contribution_escalation)),
         ("Target monthly income at retirement (today's CAD)", p.target_monthly_income),
         ("Income at end age (% of retirement income)", _fmt_pct(p.end_income_ratio)),
-        ("QPP (RPC) monthly at 65 (today's CAD)", p.qpp_monthly_at_65),
-        ("QPP (RPC) start age", p.qpp_start_age),
-        ("QPP (RPC) monthly at start age, first year (CAD)", round(qpp_first_year, 2)),
-        ("OAS (PSV) monthly at 65 (today's CAD)", p.oas_monthly),
-        ("OAS (PSV) start age", p.oas_start_age),
-        ("OAS (PSV) monthly at start age, first year (CAD)", round(oas_first_year, 2)),
-        ("OAS (PSV) clawback applied", "Yes" if p.oas_clawback else "No"),
+        ("QPP monthly at 65 (today's CAD)", p.qpp_monthly_at_65),
+        ("QPP start age", p.qpp_start_age),
+        ("QPP monthly at start age, first year (CAD)", round(qpp_first_year, 2)),
+        ("OAS monthly at 65 (today's CAD)", p.oas_monthly),
+        ("OAS start age", p.oas_start_age),
+        ("OAS monthly at start age, first year (CAD)", round(oas_first_year, 2)),
+        ("OAS clawback applied", "Yes" if p.oas_clawback else "No"),
         ("Tax model", "Progressive federal + Quebec brackets, 2026, indexed to inflation"),
         ("Marginal tax rate at retirement, first year (%)", marginal_at_retirement),
         ("Effective tax rate at retirement, first year (%)", effective_at_retirement),
@@ -564,8 +564,8 @@ def build_result(p: PlanInputs, rows: list[dict], mc: dict) -> dict:
         ("Exhaustion year (deterministic)", exhaustion_year if exhaustion_year is not None else "None"),
         ("Years of income coverage", years_of_coverage),
         (
-            f"FERR conversion year (RRSP converted at {ferr_conversion_age(p)})",
-            ferr_conversion_age(p) if p.end_age >= ferr_conversion_age(p) else "N/A (plan ends before conversion)",
+            f"RRIF conversion year (RRSP converted at {rrif_conversion_age(p)})",
+            rrif_conversion_age(p) if p.end_age >= rrif_conversion_age(p) else "N/A (plan ends before conversion)",
         ),
     ]
     return {

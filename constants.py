@@ -10,7 +10,7 @@ Sources (accessed 2025-08-30 / 2026-09-01):
   Canada.ca "Maximum benefit amounts and related figures - CPP 2025 and
   OAS, July to September 2025":
   https://www.canada.ca/content/dam/canada/employment-social-development/migration/documents/assets/portfolio/docs/en/statistics/quarterly_report/isp-card-july-sept-2025-en.pdf
-- QPP (RPC) maximum at age 65, 2025 ($1,395.25) and QPP/CPP alignment since
+- QPP maximum at age 65, 2025 ($1,395.25) and QPP/CPP alignment since
   January 2024 giving identical start-age factors (-0.6%/month before 65,
   +0.7%/month after 65):
   https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan
@@ -19,7 +19,7 @@ Sources (accessed 2025-08-30 / 2026-09-01):
   maximum +58.8% for a pension starting at 72; applying later is allowed but
   the amount stops increasing after 72 (accessed 2026-09-01):
   https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan/what-age-should-you-apply-your-retirement-pension
-- FERR (RRIF) minimum withdrawal factors - prescribed under the Income Tax
+- RRIF minimum withdrawal factors - prescribed under the Income Tax
   Regulations (Canada) section 7308; ages 71+ table below, ages under 71 use
   the formula 1 / (90 - age):
   https://catax.tools/rrif-minimum-withdrawal-calculator/
@@ -54,7 +54,7 @@ Sources (accessed 2025-08-30 / 2026-09-01):
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# QPP (RPC) - Quebec Pension Plan
+# QPP - Quebec Pension Plan
 # ---------------------------------------------------------------------------
 QPP_MAX_AT_65_2025 = 1_395.25          # maximum monthly retirement pension at 65, 2025
 QPP_EARLY_REDUCTION_PER_MONTH = 0.006  # -0.6%/month for each month before 65 (max 36% at 60)
@@ -63,7 +63,7 @@ QPP_MIN_START_AGE = 60
 QPP_MAX_START_AGE = 72                 # deferral extended from 70 to 72 in 2026; no increase after 72
 
 # ---------------------------------------------------------------------------
-# OAS (PSV) - Old Age Security (federal, applies in Quebec)
+# OAS - Old Age Security (federal, applies in Quebec)
 # ---------------------------------------------------------------------------
 OAS_MAX_2025 = 734.95                  # maximum monthly OAS, age 65-74, July-September 2025 (indexed quarterly)
 OAS_DEFERRAL_PER_MONTH = 0.006         # +0.6%/month deferred past 65, up to +36% at 70
@@ -73,27 +73,27 @@ OAS_CLAWBACK_THRESHOLD = 95_323.0      # 2026 net-world-income threshold (CRA fi
 OAS_CLAWBACK_UPPER = 152_062.0         # 2026 full-clawback income, ages 65-74 (informational)
 
 # ---------------------------------------------------------------------------
-# FERR (RRIF) mandatory minimum withdrawal factors by age (ITR s. 7308)
+# RRIF mandatory minimum withdrawal factors by age (ITR s. 7308)
 # ---------------------------------------------------------------------------
-FERR_MIN_FACTORS: dict[int, float] = {
+RRIF_MIN_FACTORS: dict[int, float] = {
     71: 0.0528, 72: 0.0540, 73: 0.0553, 74: 0.0567, 75: 0.0582,
     76: 0.0598, 77: 0.0617, 78: 0.0636, 79: 0.0658, 80: 0.0682,
     81: 0.0708, 82: 0.0738, 83: 0.0771, 84: 0.0808, 85: 0.0851,
     86: 0.0899, 87: 0.0955, 88: 0.1021, 89: 0.1099, 90: 0.1192,
     91: 0.1306, 92: 0.1449, 93: 0.1634, 94: 0.1879, 95: 0.2000,
 }
-FERR_CONVERSION_AGE = 71               # RRSP must become a FERR by Dec 31 of the year you turn 71
-FERR_CONVERSION_MIN_AGE = 55           # earliest conversion the model supports (ITR s. 7308 minimum factors are 0 before 55)
-FERR_EARLY_FACTOR_FORMULA = "1 / (90 - age)"  # applies to ages under 71 (early conversion)
+RRIF_CONVERSION_AGE = 71               # RRSP must become an RRIF by Dec 31 of the year you turn 71
+RRIF_CONVERSION_MIN_AGE = 55           # earliest conversion the model supports (ITR s. 7308 minimum factors are 0 before 55)
+RRIF_EARLY_FACTOR_FORMULA = "1 / (90 - age)"  # applies to ages under 71 (early conversion)
 
 
-def ferr_min_factor(age: int) -> float:
-    """Mandatory FERR minimum withdrawal factor for a given age (fraction)."""
-    if age < FERR_CONVERSION_AGE:
+def rrif_min_factor(age: int) -> float:
+    """Mandatory RRIF minimum withdrawal factor for a given age (fraction)."""
+    if age < RRIF_CONVERSION_AGE:
         if age < 55:
             return 0.0
         return 1.0 / (90 - age)          # early-conversion formula, ITR s. 7308
-    return FERR_MIN_FACTORS[min(age, 95)]
+    return RRIF_MIN_FACTORS[min(age, 95)]
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ QUEBEC_CREDIT_PHASE_START = 42_955.0     # family income where the line-361 cred
 QUEBEC_CREDIT_PHASE_RATE = 0.1875        # form line 31: "Amount from line 18 x 18.75%"
 QUEBEC_CREDIT_NO_ENTITLEMENT_SINGLE = 66_025.0  # form: no credits if line 18 exceeds this (single)
 QUEBEC_ABATEMENT_RATE = 0.165         # Quebec abatement: 16.5% of the basic federal tax (federal tax on taxable income AFTER non-refundable credits; the credits come first on Schedule 1, so the abatement reduces their value for QC residents)
-FERR_PENSION_CREDIT_ELIGIBLE_AGE = 71  # RRSP/FERR withdrawals qualify for the pension-income credits only once the RRSP is a FERR
+RRIF_PENSION_CREDIT_ELIGIBLE_AGE = 71  # RRSP/RRIF withdrawals qualify for the pension-income credits only once the RRSP is a RRIF
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ DEFAULT_END_INCOME_RATIO = 0.65         # income at end age, as a fraction of in
 DEFAULT_QPP_START_AGE = 72
 DEFAULT_OAS_START_AGE = 70
 DEFAULT_OAS_CLAWBACK = True
-DEFAULT_FERR_CONVERSION_AGE = None      # None = convert the RRSP to a FERR (RRIF) at the retirement age (statutory deadline 71)
+DEFAULT_RRIF_CONVERSION_AGE = None      # None = convert the RRSP to an RRIF at the retirement age (statutory deadline 71)
 
 # Tax
 # (No user tax inputs: income tax is modeled automatically from the 2026

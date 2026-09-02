@@ -190,9 +190,9 @@ def test_scale_indexes_2026_amounts():
 def test_eligible_pension_income_from_conversion_age():
     assert eligible_pension_income(60, 10_000) == 0.0   # default conversion at 71: pre-71 RRSP withdrawal not eligible
     assert eligible_pension_income(70, 10_000) == 0.0
-    assert eligible_pension_income(71, 10_000) == 10_000  # FERR withdrawal qualifies
+    assert eligible_pension_income(71, 10_000) == 10_000  # RRIF withdrawal qualifies
     assert eligible_pension_income(72, 0.0) == 0.0
-    # Early conversion: FERR payments qualify from the conversion age.
+    # Early conversion: RRIF payments qualify from the conversion age.
     assert eligible_pension_income(60, 10_000, 60) == 10_000
     assert eligible_pension_income(70, 10_000, 65) == 10_000
     assert eligible_pension_income(64, 10_000, 65) == 0.0

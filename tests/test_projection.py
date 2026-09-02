@@ -71,7 +71,7 @@ def test_inflation_indexed_withdrawal():
     assert rows[1]["shortfall"] == pytest.approx(0.0)
 
 
-def test_ferr_minimum_at_71_excess_to_tfsa():
+def test_rrif_minimum_at_71_excess_to_tfsa():
     p = PlanInputs(
         current_age=71, retirement_age=71, end_age=71,
         rrsp_balance=100_000, rrsp_monthly=0,
@@ -82,12 +82,12 @@ def test_ferr_minimum_at_71_excess_to_tfsa():
         target_monthly_income=0.0,
     )
     row = deterministic_projection(p)[0]
-    ferr_min = 0.0528 * 100_000  # ITR s. 7308 factor at 71
-    assert row["rrsp"] == pytest.approx(100_000 - ferr_min)
+    rrif_min = 0.0528 * 100_000  # ITR s. 7308 factor at 71
+    assert row["rrsp"] == pytest.approx(100_000 - rrif_min)
     # Income is only the $5,280 minimum, well below the basic personal
     # amounts, so no tax is owed and the full amount is reinvested.
-    assert row["tfsa"] == pytest.approx(ferr_min)
-    assert row["withdrawal"] == pytest.approx(ferr_min)
+    assert row["tfsa"] == pytest.approx(rrif_min)
+    assert row["withdrawal"] == pytest.approx(rrif_min)
     assert row["tax_paid"] == pytest.approx(0.0)
     assert row["shortfall"] == pytest.approx(0.0)
 
@@ -104,7 +104,7 @@ def test_rrsp_contributions_stop_and_redirect_at_71():
     )
     rows = deterministic_projection(p)
     assert rows[0]["rrsp"] == pytest.approx(1_200)  # age 70: contribution to RRSP
-    # age 71: RRSP closed -> contribution redirected to TFSA; FERR minimum
+    # age 71: RRSP closed -> contribution redirected to TFSA; RRIF minimum
     # withdrawn (tax-free, below the basic personal amounts) and reinvested.
     assert rows[1]["rrsp"] == pytest.approx(1_200 - 0.0528 * 1_200)
     assert rows[1]["tfsa"] == pytest.approx(1_200 + 0.0528 * 1_200)
@@ -190,7 +190,7 @@ def test_rows_carry_income_pct_and_target():
 
 
 # ---------------------------------------------------------------------------
-# Detail columns: tax paid, FERR minimum, OAS clawback
+# Detail columns: tax paid, RRIF minimum, OAS clawback
 # ---------------------------------------------------------------------------
 def test_tax_paid_on_rrsp_withdrawal():
     p = PlanInputs(
@@ -201,7 +201,7 @@ def test_tax_paid_on_rrsp_withdrawal():
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
         target_monthly_income=2_000, end_income_ratio=1.0,
-        ferr_conversion_age=71,  # keep this a pre-conversion RRSP scenario
+        rrif_conversion_age=71,  # keep this a pre-conversion RRSP scenario
     )
     row = deterministic_projection(p)[0]
     gross = row["withdrawal"]
@@ -211,14 +211,14 @@ def test_tax_paid_on_rrsp_withdrawal():
     assert row["tax_paid"] == pytest.approx(
         sum(income_tax(gross, 65, eligible_pension_income(65, gross, 71), 0.0, row["year"]))
     )
-    assert row["ferr_min"] == pytest.approx(0.0)  # before 71
+    assert row["rrif_min"] == pytest.approx(0.0)  # before 71
     assert row["oas_clawback"] == pytest.approx(0.0)
     assert row["shortfall"] == pytest.approx(0.0)
     assert 0.0 < row["marginal_rate"] < 0.95
     assert row["effective_rate"] == pytest.approx(row["tax_paid"] / gross)
 
 
-def test_ferr_minimum_and_tax_column_at_71():
+def test_rrif_minimum_and_tax_column_at_71():
     p = PlanInputs(
         current_age=71, retirement_age=71, end_age=71,
         rrsp_balance=100_000, rrsp_monthly=0,
@@ -229,9 +229,9 @@ def test_ferr_minimum_and_tax_column_at_71():
         target_monthly_income=0.0,
     )
     row = deterministic_projection(p)[0]
-    ferr_min = 0.0528 * 100_000
-    assert row["ferr_min"] == pytest.approx(ferr_min)
-    assert row["withdrawal"] == pytest.approx(ferr_min)
+    rrif_min = 0.0528 * 100_000
+    assert row["rrif_min"] == pytest.approx(rrif_min)
+    assert row["withdrawal"] == pytest.approx(rrif_min)
     # $5,280 of income is below the basic personal amounts: no tax.
     assert row["tax_paid"] == pytest.approx(0.0)
     assert row["oas_clawback"] == pytest.approx(0.0)
@@ -247,7 +247,7 @@ def test_oas_clawback_column():
         target_monthly_income=8_000, end_income_ratio=1.0,
         qpp_monthly_at_65=1_200, oas_monthly=734.95,
         qpp_start_age=65, oas_start_age=65,
-        oas_clawback=True, ferr_conversion_age=71,  # keep this a pre-conversion RRSP scenario
+        oas_clawback=True, rrif_conversion_age=71,  # keep this a pre-conversion RRSP scenario
     )
     row = deterministic_projection(p)[0]
     oas_gross = 734.95 * 12
@@ -298,7 +298,7 @@ def test_pensions_are_taxable():
         target_monthly_income=4_000, end_income_ratio=1.0,
         qpp_monthly_at_65=1_000, oas_monthly=0.0,
         qpp_start_age=65, oas_start_age=65,
-        ferr_conversion_age=71,  # keep this a pre-conversion RRSP scenario
+        rrif_conversion_age=71,  # keep this a pre-conversion RRSP scenario
     )
     row = deterministic_projection(p)[0]
     cpp = 1_000 * 12  # 12,000/yr — fully taxable
@@ -341,8 +341,8 @@ def test_validation_errors():
     assert validate(PlanInputs(qpp_start_age=59))
     assert validate(PlanInputs(qpp_start_age=73))  # 60-72 is the statutory range since 2026
     assert validate(PlanInputs(oas_start_age=66))
-    assert validate(PlanInputs(ferr_conversion_age=54))
-    assert validate(PlanInputs(ferr_conversion_age=72))
+    assert validate(PlanInputs(rrif_conversion_age=54))
+    assert validate(PlanInputs(rrif_conversion_age=72))
     assert validate(PlanInputs(rrsp_balance=-1))
     assert validate(PlanInputs(annual_return=-0.1))
     assert validate(PlanInputs(end_income_ratio=-0.1))
@@ -377,21 +377,21 @@ def test_new_tax_columns_and_summary():
 
 
 # ---------------------------------------------------------------------------
-# RRSP -> FERR (RRIF) conversion age
+# RRSP -> RRIF conversion age
 # ---------------------------------------------------------------------------
-def test_ferr_conversion_age_resolution():
-    from projection import ferr_conversion_age as resolve
+def test_rrif_conversion_age_resolution():
+    from projection import rrif_conversion_age as resolve
     # Default: convert at the retirement age.
     assert resolve(PlanInputs(retirement_age=60)) == 60
     assert resolve(PlanInputs(retirement_age=59)) == 59
     # Cannot defer past the statutory deadline of 71.
     assert resolve(PlanInputs(retirement_age=80)) == 71
     # An explicit choice is honored.
-    assert resolve(PlanInputs(retirement_age=65, ferr_conversion_age=60)) == 60
-    assert resolve(PlanInputs(retirement_age=65, ferr_conversion_age=71)) == 71
+    assert resolve(PlanInputs(retirement_age=65, rrif_conversion_age=60)) == 60
+    assert resolve(PlanInputs(retirement_age=65, rrif_conversion_age=71)) == 71
 
 
-def test_conversion_at_retirement_starts_ferr_minimum_and_credits():
+def test_conversion_at_retirement_starts_rrif_minimum_and_credits():
     p = PlanInputs(
         current_age=59, retirement_age=60, end_age=61,
         rrsp_balance=1_000_000, rrsp_monthly=0,
@@ -403,14 +403,14 @@ def test_conversion_at_retirement_starts_ferr_minimum_and_credits():
     )
     rows = deterministic_projection(p)
     r60 = next(r for r in rows if r["age"] == 60)
-    ferr_min = 1_000_000 / 30.0  # 1/(90-60) x balance at the conversion age
-    assert r60["ferr_min"] == pytest.approx(ferr_min)
+    rrif_min = 1_000_000 / 30.0  # 1/(90-60) x balance at the conversion age
+    assert r60["rrif_min"] == pytest.approx(rrif_min)
     # No income need, so the minimum is withdrawn and reinvested after tax;
-    # from the conversion age the FERR payments also earn the pension-income
+    # from the conversion age the RRIF payments also earn the pension-income
     # credits (federal + Quebec), so the tax is exactly income_tax(...).
-    assert r60["withdrawal"] == pytest.approx(ferr_min)
+    assert r60["withdrawal"] == pytest.approx(rrif_min)
     assert r60["tax_paid"] == pytest.approx(
-        sum(income_tax(ferr_min, 60, eligible_pension_income(60, ferr_min, 60), 0.0, r60["year"]))
+        sum(income_tax(rrif_min, 60, eligible_pension_income(60, rrif_min, 60), 0.0, r60["year"]))
     )
 
 
@@ -422,18 +422,18 @@ def test_contributions_redirect_at_conversion_age():
         nonreg_balance=0, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=0.0, ferr_conversion_age=60,
+        target_monthly_income=0.0, rrif_conversion_age=60,
     )
     rows = deterministic_projection(p)
     by_age = {r["age"]: r for r in rows}
     assert by_age[58]["rrsp"] == pytest.approx(1_200)   # contribution to RRSP before conversion
     assert by_age[59]["rrsp"] == pytest.approx(2_400)
     # Age 60 = conversion: the RRSP is closed, so the monthly contribution is
-    # redirected to the TFSA, and the FERR minimum (1/30 of the balance) is
+    # redirected to the TFSA, and the RRIF minimum (1/30 of the balance) is
     # withdrawn and reinvested (tax-free here).
-    ferr_min = 2_400 / 30.0
-    assert by_age[60]["rrsp"] == pytest.approx(2_400 - ferr_min)
-    assert by_age[60]["tfsa"] == pytest.approx(1_200 + ferr_min)
+    rrif_min = 2_400 / 30.0
+    assert by_age[60]["rrsp"] == pytest.approx(2_400 - rrif_min)
+    assert by_age[60]["tfsa"] == pytest.approx(1_200 + rrif_min)
     # Contributions keep flowing to the TFSA after the conversion.
     assert by_age[61]["tfsa"] > by_age[60]["tfsa"]
 
@@ -441,6 +441,6 @@ def test_contributions_redirect_at_conversion_age():
 def test_default_scenario_converts_at_retirement():
     p = PlanInputs()
     res = build_result(p, deterministic_projection(p), monte_carlo(p, num_sims=20))
-    conv_line = next(s for s in res["summary"] if s[0].startswith("FERR conversion year"))
-    assert conv_line[0] == f"FERR conversion year (RRSP converted at {p.retirement_age})"
+    conv_line = next(s for s in res["summary"] if s[0].startswith("RRIF conversion year"))
+    assert conv_line[0] == f"RRIF conversion year (RRSP converted at {p.retirement_age})"
     assert conv_line[1] == p.retirement_age

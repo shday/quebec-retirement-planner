@@ -20,9 +20,9 @@ def test_projection_csv_headers_rows_and_raw_numbers():
     rows = _rows(projection_csv(res))
     assert rows[0] == [
         "Age", "Year", "Income %", "Income target", "RRSP", "TFSA",
-        "Non-registered", "Total", "Withdrawal", "FERR minimum", "Shortfall",
-        "Tax paid", "Marginal rate", "Effective rate", "CPP (RPC)",
-        "OAS (PSV)", "OAS clawback",
+        "Non-registered", "Total", "Withdrawal", "RRIF minimum", "Shortfall",
+        "Tax paid", "Marginal rate", "Effective rate", "QPP",
+        "OAS", "OAS clawback",
     ]
     assert len(rows) == len(res["projection"]) + 1
     first = rows[1]
@@ -39,7 +39,7 @@ def test_projection_csv_headers_rows_and_raw_numbers():
     assert float(first[5]) == pytest.approx(p0["tfsa"])
     assert float(first[7]) == pytest.approx(p0["total"])
     assert float(first[8]) == pytest.approx(p0["withdrawal"])
-    assert float(first[9]) == pytest.approx(p0["ferr_min"])
+    assert float(first[9]) == pytest.approx(p0["rrif_min"])
     assert float(first[10]) == pytest.approx(p0["shortfall"])
     assert float(first[11]) == pytest.approx(p0["tax_paid"])
     assert float(first[12]) == pytest.approx(p0["marginal_rate"] * 100)

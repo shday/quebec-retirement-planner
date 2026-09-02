@@ -18,7 +18,7 @@ from projection import (
     PlanInputs,
     build_result,
     deterministic_projection,
-    ferr_conversion_age,
+    rrif_conversion_age,
     monte_carlo,
     validate,
 )
@@ -27,7 +27,7 @@ st.set_page_config(page_title="Quebec Retirement Planner", page_icon="🍁", lay
 
 st.title("🍁 Quebec Retirement Planner")
 st.caption(
-    "RPC (QPP) · PSV (OAS) · REER (RRSP) · CELI (TFSA) · FERR (RRIF) — amounts in CAD. "
+    "QPP · OAS · RRSP · TFSA · RRIF — amounts in CAD. "
     "Informational estimates only, not financial advice. "
     "This app computes locally; nothing is uploaded anywhere."
 )
@@ -44,10 +44,10 @@ with st.sidebar:
 
     st.header("💰 Accounts")
     st.caption("Current balance + monthly contribution until retirement")
-    rrsp_balance = st.number_input("RRSP (REER) balance (CAD)", 0, 20_000_000, C.DEFAULT_RRSP_BALANCE, step=5_000, format="%d")
-    rrsp_monthly = st.number_input("RRSP (REER) monthly contribution (CAD)", 0, 100_000, C.DEFAULT_RRSP_MONTHLY, step=50, format="%d")
-    tfsa_balance = st.number_input("TFSA (CELI) balance (CAD)", 0, 20_000_000, C.DEFAULT_TFSA_BALANCE, step=5_000, format="%d")
-    tfsa_monthly = st.number_input("TFSA (CELI) monthly contribution (CAD)", 0, 100_000, C.DEFAULT_TFSA_MONTHLY, step=50, format="%d")
+    rrsp_balance = st.number_input("RRSP balance (CAD)", 0, 20_000_000, C.DEFAULT_RRSP_BALANCE, step=5_000, format="%d")
+    rrsp_monthly = st.number_input("RRSP monthly contribution (CAD)", 0, 100_000, C.DEFAULT_RRSP_MONTHLY, step=50, format="%d")
+    tfsa_balance = st.number_input("TFSA balance (CAD)", 0, 20_000_000, C.DEFAULT_TFSA_BALANCE, step=5_000, format="%d")
+    tfsa_monthly = st.number_input("TFSA monthly contribution (CAD)", 0, 100_000, C.DEFAULT_TFSA_MONTHLY, step=50, format="%d")
     nonreg_balance = st.number_input("Non-registered balance (CAD)", 0, 20_000_000, C.DEFAULT_NONREG_BALANCE, step=5_000, format="%d")
     nonreg_monthly = st.number_input("Non-registered monthly contribution (CAD)", 0, 100_000, C.DEFAULT_NONREG_MONTHLY, step=50, format="%d")
 
@@ -65,33 +65,33 @@ with st.sidebar:
     )
     st.caption("Income needs decline linearly from retirement to end age.")
     st.caption("Pensions are indexed to inflation from today.")
-    qpp_monthly = st.number_input("QPP (RPC) monthly at 65 (today's CAD)", 0.0, 5_000.0, C.QPP_MAX_AT_65_2025, step=25.0, format="%.2f")
+    qpp_monthly = st.number_input("QPP monthly at 65 (today's CAD)", 0.0, 5_000.0, C.QPP_MAX_AT_65_2025, step=25.0, format="%.2f")
     st.caption(f"2025 maximum: {C.QPP_MAX_AT_65_2025:,.2f} — use your own figure from Retraite Québec.")
     qpp_start = st.select_slider(
-        "QPP (RPC) start age",
+        "QPP start age",
         options=range(C.QPP_MIN_START_AGE, C.QPP_MAX_START_AGE + 1),
         value=max(C.QPP_MIN_START_AGE, min(C.DEFAULT_QPP_START_AGE, C.QPP_MAX_START_AGE)),
     )
-    oas_monthly = st.number_input("OAS (PSV) monthly at 65 (today's CAD)", 0.0, 3_000.0, C.OAS_MAX_2025, step=10.0, format="%.2f")
+    oas_monthly = st.number_input("OAS monthly at 65 (today's CAD)", 0.0, 3_000.0, C.OAS_MAX_2025, step=10.0, format="%.2f")
     st.caption(f"2025 maximum (65-74): {C.OAS_MAX_2025:,.2f} — use your own figure from Service Canada.")
     oas_options = (65, C.OAS_DEFERRAL_MAX_AGE)  # statutory choices
     oas_index = oas_options.index(C.DEFAULT_OAS_START_AGE) if C.DEFAULT_OAS_START_AGE in oas_options else 0
-    oas_start = st.radio("OAS (PSV) start age", options=oas_options, index=oas_index, horizontal=True)
-    oas_clawback = st.checkbox("Apply OAS (PSV) clawback (15% above ~$95,323/yr)", value=C.DEFAULT_OAS_CLAWBACK)
+    oas_start = st.radio("OAS start age", options=oas_options, index=oas_index, horizontal=True)
+    oas_clawback = st.checkbox("Apply OAS clawback (15% above ~$95,323/yr)", value=C.DEFAULT_OAS_CLAWBACK)
     convert_at_retirement = st.checkbox(
-        "Convert RRSP (REER) to FERR (RRIF) at retirement",
-        value=C.DEFAULT_FERR_CONVERSION_AGE is None,
+        "Convert RRSP to RRIF at retirement",
+        value=C.DEFAULT_RRIF_CONVERSION_AGE is None,
     )
     st.caption(
-        "FERR minimum withdrawals (ITR s. 7308) and the pension-income tax "
+        "RRIF minimum withdrawals (ITR s. 7308) and the pension-income tax "
         "credits start at the conversion age; the RRSP must be converted by 71."
     )
     if convert_at_retirement:
-        ferr_conv_age_input: int | None = None
+        rrif_conv_age_input: int | None = None
     else:
-        ferr_conv_age_input = st.number_input(
-            "FERR (RRIF) conversion age",
-            C.FERR_CONVERSION_MIN_AGE, C.FERR_CONVERSION_AGE, C.FERR_CONVERSION_AGE, step=1, format="%d",
+        rrif_conv_age_input = st.number_input(
+            "RRIF conversion age",
+            C.RRIF_CONVERSION_MIN_AGE, C.RRIF_CONVERSION_AGE, C.RRIF_CONVERSION_AGE, step=1, format="%d",
         )
 
     st.header("🧾 Tax")
@@ -99,7 +99,7 @@ with st.sidebar:
         "Income tax is modeled automatically: progressive federal (14%–33%) "
         "and Quebec (14%–25.75%) brackets, 2026, indexed to inflation — with the "
         "basic personal, age 65+ and pension-income credits, the Quebec abatement, "
-        "and the OAS (PSV) recovery tax. No tax inputs needed."
+        "and the OAS recovery tax. No tax inputs needed."
     )
 
     st.header("🎲 Monte Carlo")
@@ -130,7 +130,7 @@ p = PlanInputs(
     oas_monthly=float(oas_monthly),
     oas_start_age=int(oas_start),
     oas_clawback=bool(oas_clawback),
-    ferr_conversion_age=ferr_conv_age_input,
+    rrif_conversion_age=rrif_conv_age_input,
 )
 
 errors = validate(p)
@@ -159,7 +159,7 @@ c1.metric("Median balance at retirement (MC)", f"${mc['retirement_balance'][50]:
 c2.metric("Success rate (never ran out)", f"{mc['success_pct']:.1f}%")
 c3.metric("Balance at retirement (deterministic)", f"${det_retirement_balance:,.0f}")
 c4.metric("Exhaustion year", summary["Exhaustion year (deterministic)"])
-c5.metric("FERR conversion year", str(ferr_conversion_age(p)) if p.end_age >= ferr_conversion_age(p) else "N/A")
+c5.metric("RRIF conversion year", str(rrif_conversion_age(p)) if p.end_age >= rrif_conversion_age(p) else "N/A")
 
 st.divider()
 
@@ -192,13 +192,13 @@ det_tfsa = [r["tfsa"] for r in rows]
 det_nonreg = [r["nonreg"] for r in rows]
 fig.add_trace(
     go.Bar(
-        x=years, y=det_rrsp, name="RRSP (REER)",
+        x=years, y=det_rrsp, name="RRSP",
         marker_color="#2ca02c", opacity=0.85,
     )
 )
 fig.add_trace(
     go.Bar(
-        x=years, y=det_tfsa, name="TFSA (CELI)",
+        x=years, y=det_tfsa, name="TFSA",
         marker_color="#ff7f0e", opacity=0.85,
     )
 )
@@ -236,18 +236,95 @@ display_rows = [
         "Non-registered": round(r["nonreg"], 0),
         "Total": round(r["total"], 0),
         "Withdrawal": round(r["withdrawal"], 0),
-        "FERR minimum": round(r["ferr_min"], 0),
+        "RRIF minimum": round(r["rrif_min"], 0),
         "Shortfall": round(r["shortfall"], 0),
         "Tax paid": round(r["tax_paid"], 0),
         "Marginal rate": round(r["marginal_rate"] * 100, 1),
         "Effective rate": round(r["effective_rate"] * 100, 1),
-        "CPP (RPC)": round(r["cpp"], 0),
-        "OAS (PSV)": round(r["oas"], 0),
+        "QPP": round(r["cpp"], 0),
+        "OAS": round(r["oas"], 0),
         "OAS clawback": round(r["oas_clawback"], 0),
     }
     for r in rows
 ]
-st.dataframe(display_rows, hide_index=True, width="stretch", height=440)
+st.dataframe(
+    display_rows,
+    hide_index=True,
+    width="stretch",
+    height=440,
+    column_config={
+        "Income %": st.column_config.NumberColumn(
+            label="Income %",
+            help="Income target for the year as a % of the target at retirement (declines linearly to the end-age level).",
+        ),
+        "Income target": st.column_config.NumberColumn(
+            label="Income target",
+            help="Monthly after-tax income target for the year, inflation-indexed from today's dollars.",
+        ),
+        "RRSP": st.column_config.NumberColumn(
+            label="RRSP",
+            help="End-of-year RRSP balance — withdrawals are fully taxable.",
+        ),
+        "TFSA": st.column_config.NumberColumn(
+            label="TFSA",
+            help="End-of-year TFSA balance — tax-free.",
+        ),
+        "Non-registered": st.column_config.NumberColumn(
+            label="Non-registered",
+            help="End-of-year non-registered balance (untaxed in this model).",
+        ),
+        "Total": st.column_config.NumberColumn(
+            label="Total",
+            help="RRSP + TFSA + non-registered at year end.",
+        ),
+        "Withdrawal": st.column_config.NumberColumn(
+            label="Withdrawal",
+            help="Gross cash withdrawn from the accounts during the year.",
+        ),
+        "RRIF minimum": st.column_config.NumberColumn(
+            label="RRIF minimum",
+            help="Mandatory minimum RRIF withdrawal (ITR s. 7308) — 0 before the conversion age.",
+        ),
+        "Shortfall": st.column_config.NumberColumn(
+            label="Shortfall",
+            help="Income need not covered by pensions and withdrawals (0 = fully funded).",
+        ),
+        "Tax paid": st.column_config.NumberColumn(
+            label="Tax paid",
+            help="Federal + Quebec income tax on QPP + OAS + RRSP/RRIF income (progressive brackets, credits, abatement).",
+        ),
+        "Marginal rate": st.column_config.NumberColumn(
+            label="Marginal rate",
+            format="%.1f%%",
+            help=(
+                "Tax rate on the next dollar of income. Includes the age 65+ "
+                "credit clawbacks (15% federal age amount, 18.75% Quebec "
+                "line-361 amounts), so it rises at 65 while income is in the "
+                "credit phase-out ranges."
+            ),
+        ),
+        "Effective rate": st.column_config.NumberColumn(
+            label="Effective rate",
+            format="%.1f%%",
+            help=(
+                "(Tax paid + OAS clawback) ÷ taxable income for the year — "
+                "your average tax burden on CPP + OAS + RRSP/RRIF income."
+            ),
+        ),
+        "QPP": st.column_config.NumberColumn(
+            label="QPP",
+            help="QPP pension received for the year, inflation-indexed.",
+        ),
+        "OAS": st.column_config.NumberColumn(
+            label="OAS",
+            help="OAS received for the year, net of any clawback.",
+        ),
+        "OAS clawback": st.column_config.NumberColumn(
+            label="OAS clawback",
+            help="Amount recovered from OAS — 15% of income above the recovery threshold.",
+        ),
+    },
+)
 
 mc_col, key_col = st.columns([2, 3])
 with mc_col:
@@ -282,8 +359,8 @@ with key_col:
             "Success rate: never ran out of money (%)",
             "Exhaustion year (deterministic)",
             "Years of income coverage",
-            "QPP (RPC) monthly at start age, first year (CAD)",
-            "OAS (PSV) monthly at start age, first year (CAD)",
+            "QPP monthly at start age, first year (CAD)",
+            "OAS monthly at start age, first year (CAD)",
             "Marginal tax rate at retirement, first year (%)",
             "Effective tax rate at retirement, first year (%)",
         }
