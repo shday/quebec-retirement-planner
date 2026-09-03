@@ -65,6 +65,13 @@ Each year from your current age to your end age:
   reinvested in the TFSA (simplification). RRIF payments are also eligible
   pension income, so the pension-income tax credits apply from the conversion
   age.
+- **Monthly meltdown (optional)**: a monthly amount (today's dollars,
+  inflation-indexed) is deposited into the TFSA from retirement up to — but
+  not including — the QPP start age. It is funded by RRIF withdrawals that are
+  grossed up for tax (the savings land in the TFSA after tax), shrinking the
+  RRIF so the mandatory minimums stop forcing extra taxable income once QPP/OAS
+  cover most of the need (e.g., the default scenario's effective-rate jump at
+  QPP start drops from 18.55% to ~15.6% with ~$550/month of savings).
 - If accounts run out before your end age, the first shortfall year is flagged
   as the **exhaustion year**.
 
@@ -102,6 +109,7 @@ money).
 | QPP monthly at 65 | $1,395.25 (2025 max) | [Retraite Québec — use your own statement figure](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
 | OAS monthly at 65 | $734.95 (2025 max, 65–74) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
 | RRSP → RRIF conversion age | At retirement (deadline 71) | Your own plan (early conversion earns the pension-income credits sooner) |
+| Monthly meltdown | $0/mo (off) | Optional: save into the TFSA before QPP starts (funded by grossed-up RRIF withdrawals) |
 | Income tax | Automatic (no inputs) | 2026 federal + Quebec brackets/credits, indexed to inflation |
 | Return / inflation / volatility | 7% / 2.5% / 10% | Your own assumptions |
 

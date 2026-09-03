@@ -444,3 +444,128 @@ def test_default_scenario_converts_at_retirement():
     conv_line = next(s for s in res["summary"] if s[0].startswith("RRIF conversion year"))
     assert conv_line[0] == f"RRIF conversion year (RRSP converted at {p.retirement_age})"
     assert conv_line[1] == p.retirement_age
+
+
+# ---------------------------------------------------------------------------
+# Monthly meltdown: monthly TFSA savings funded from RRIF withdrawals, pre-QPP
+# ---------------------------------------------------------------------------
+def test_monthly_meltdown_deposited_in_tfsa_after_tax():
+    # No income need: the RRIF withdrawal is grossed up so the full monthly
+    # savings target lands in the TFSA after tax.
+    p = PlanInputs(
+        current_age=64, retirement_age=65, end_age=66,
+        rrsp_balance=1_000_000, rrsp_monthly=0,
+        tfsa_balance=0, tfsa_monthly=0,
+        nonreg_balance=0, nonreg_monthly=0,
+        annual_return=0.0, inflation_rate=0.0,
+        qpp_monthly_at_65=0.0, oas_monthly=0.0,
+        target_monthly_income=0.0,  # no income need: isolate the savings
+        rrif_conversion_age=71,      # age 65 < 71 -> no mandatory minimum
+        monthly_meltdown=5_000,  # 60,000/yr deposited into the TFSA
+    )
+    row = next(r for r in deterministic_projection(p) if r["age"] == 65)
+    assert row["withdrawal"] > 60_000  # grossed up for the tax on the withdrawal
+    assert row["tfsa"] == pytest.approx(60_000, abs=0.5)  # the after-tax deposit
+    assert row["shortfall"] == pytest.approx(0.0)
+
+
+def test_monthly_meltdown_add_on_top_of_need():
+    p = PlanInputs(
+        current_age=64, retirement_age=65, end_age=66,
+        rrsp_balance=1_000_000, rrsp_monthly=0,
+        tfsa_balance=0, tfsa_monthly=0,
+        nonreg_balance=0, nonreg_monthly=0,
+        annual_return=0.0, inflation_rate=0.0,
+        qpp_monthly_at_65=0.0, oas_monthly=0.0,
+        target_monthly_income=2_000,  # 24,000/yr after-tax need
+        rrif_conversion_age=71,
+        monthly_meltdown=1_000,   # 12,000/yr into the TFSA
+    )
+    row = next(r for r in deterministic_projection(p) if r["age"] == 65)
+    # The RRIF withdrawal nets the spending need PLUS the savings.
+    assert row["withdrawal"] - row["tax_paid"] == pytest.approx(2_000 * 12 + 12_000, abs=0.1)
+    assert row["tfsa"] == pytest.approx(12_000, abs=0.5)
+    assert row["shortfall"] == pytest.approx(0.0)
+
+
+def test_monthly_meltdown_stop_at_qpp_start():
+    # Savings apply only while age < qpp_start_age. With no spending need and a
+    # late conversion (no mandatory minimum until 71), the withdrawal equals the
+    # savings deposit exactly, so the boundary is easy to see.
+    def run(qpp_start):
+        p = PlanInputs(
+            current_age=59, retirement_age=60, end_age=71,
+            rrsp_balance=300_000, rrsp_monthly=0,
+            tfsa_balance=0, tfsa_monthly=0,
+            nonreg_balance=0, nonreg_monthly=0,
+            annual_return=0.0, inflation_rate=0.0,
+            qpp_monthly_at_65=0.0, oas_monthly=0.0,
+            target_monthly_income=0.0,
+            rrif_conversion_age=71,  # no minimum until 71
+            qpp_start_age=qpp_start,
+            monthly_meltdown=500,  # 6,000/yr
+        )
+        return {r["age"]: r for r in deterministic_projection(p)}
+
+    qpp70 = run(70)
+    qpp72 = run(72)
+    # Both save in the years before QPP starts.
+    assert qpp70[69]["withdrawal"] == pytest.approx(6_000)
+    assert qpp72[69]["withdrawal"] == pytest.approx(6_000)
+    # At 70: savings stop if QPP starts at 70, but continue if it starts at 72.
+    assert qpp70[70]["withdrawal"] == pytest.approx(0.0)
+    assert qpp72[70]["withdrawal"] == pytest.approx(6_000)
+
+
+def test_monthly_meltdown_is_inflation_indexed():
+    p = PlanInputs(
+        current_age=64, retirement_age=65, end_age=67,
+        rrsp_balance=1_000_000, rrsp_monthly=0,
+        tfsa_balance=0, tfsa_monthly=0,
+        nonreg_balance=0, nonreg_monthly=0,
+        annual_return=0.0, inflation_rate=0.02,
+        qpp_monthly_at_65=0.0, oas_monthly=0.0,
+        target_monthly_income=0.0,
+        rrif_conversion_age=71,
+        monthly_meltdown=1_000,  # 12,000/yr, indexed
+    )
+    by_age = {r["age"]: r for r in deterministic_projection(p)}
+    assert by_age[65]["withdrawal"] == pytest.approx(12_000 * 1.02)        # offset 1
+    assert by_age[66]["withdrawal"] == pytest.approx(12_000 * 1.02 ** 2)   # offset 2
+
+
+def test_monthly_meltdown_clamped_by_balance():
+    p = PlanInputs(
+        current_age=64, retirement_age=65, end_age=66,
+        rrsp_balance=5_000, rrsp_monthly=0,
+        tfsa_balance=0, tfsa_monthly=0,
+        nonreg_balance=0, nonreg_monthly=0,
+        annual_return=0.0, inflation_rate=0.0,
+        qpp_monthly_at_65=0.0, oas_monthly=0.0,
+        target_monthly_income=0.0,
+        rrif_conversion_age=71,
+        monthly_meltdown=5_000,  # wants 60,000/yr, balance is only 5,000
+    )
+    row = next(r for r in deterministic_projection(p) if r["age"] == 65)
+    assert row["withdrawal"] == pytest.approx(5_000)
+    assert row["rrsp"] == pytest.approx(0.0)
+    assert row["tfsa"] == pytest.approx(5_000 - row["tax_paid"])
+
+
+def test_monthly_meltdown_headline_scenario():
+    # The default scenario's jump at QPP start (eff 15.89% @71 -> 18.55% @72)
+    # disappears once the RRIF is small enough that the minimum stops binding.
+    base = compute_all(PlanInputs())
+    melt = compute_all(PlanInputs(monthly_meltdown=550))
+    b72 = next(r for r in base["projection"] if r["age"] == 72)
+    m72 = next(r for r in melt["projection"] if r["age"] == 72)
+    assert b72["effective_rate"] > 0.17  # sanity: the base scenario really jumps
+    assert m72["effective_rate"] < b72["effective_rate"]
+    assert m72["effective_rate"] < 0.17
+    assert m72["rrsp"] < b72["rrsp"]
+    # The mandatory minimum no longer binds at 72 with the meltdown.
+    assert m72["withdrawal"] > m72["rrif_min"]
+    # Total income tax over retirement falls.
+    tax_base = sum(r["tax_paid"] for r in base["projection"])
+    tax_melt = sum(r["tax_paid"] for r in melt["projection"])
+    assert tax_melt < tax_base

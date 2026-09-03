@@ -179,6 +179,7 @@ DEFAULT_QPP_START_AGE = 72
 DEFAULT_OAS_START_AGE = 70
 DEFAULT_OAS_CLAWBACK = True
 DEFAULT_RRIF_CONVERSION_AGE = None      # None = convert the RRSP to an RRIF at the retirement age (statutory deadline 71)
+DEFAULT_MONTHLY_MELTDOWN = 0.0           # monthly TFSA savings funded from RRIF withdrawals (meltdown), today's CAD; 0 = off
 
 # Tax
 # (No user tax inputs: income tax is modeled automatically from the 2026

@@ -72,12 +72,17 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
    solves `CPP + net OAS + gross − tax = after-tax need` (converges to
    <$0.01, clamped to the RRSP balance) — with the RRIF minimum as a **floor**
    on the RRIF withdrawal (if the minimum exceeds the need, the after-tax
-   surplus is reinvested in TFSA) → TFSA last. If accounts run dry,
-   `shortfall` records the unmet gap for that year (first such year = the
-   **exhaustion year**). If the need is already covered but an RRIF minimum
-   exists (working past the conversion age, or pensions cover the target after
-   tax), the
-   minimum is still withdrawn and its after-tax amount goes to TFSA.
+   surplus is reinvested in TFSA) → TFSA last. **Monthly meltdown**
+   (optional `monthly_meltdown`, today's CAD/month, inflation-indexed): in
+   retirement years before QPP starts (`age < qpp_start_age`) the savings
+   target is added to the after-tax need the RRIF solve targets
+   (`after-tax need = spending + savings`), so the RRIF withdrawal is grossed
+   up for tax and the savings are deposited in the TFSA via the surplus logic
+   (spending is covered first). If accounts run dry, `shortfall` records the unmet gap
+   for that year (first such year = the **exhaustion year**). If the need is
+   already covered but an RRIF minimum exists (working past the conversion
+   age, or pensions cover the target after tax), the minimum is still
+   withdrawn and its after-tax amount goes to TFSA.
 8. **Monte Carlo**: 1,000 sims, `random.Random(seed=42)`, lognormal annual
    returns `exp(ln(1+r) − 0.5σ² + σ·z) − 1`. Tracks per-year total balances
    (for the P5–P95 band), balance at retirement age, balance at end age, and
@@ -135,8 +140,8 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   marital-status input). "Family income" is proxied by the taxpayer's own
   taxable income.
 - Defaults: return 7%, inflation 2.5%, volatility 10%, escalation 0%, income
-  at end age 60% (linear decline), 1,000 sims, seed 42. No tax default — tax
-  is automatic.
+  at end age 60% (linear decline), monthly meltdown off ($0/mo), 1,000 sims,
+  seed 42. No tax default — tax is automatic.
 
 ## Locked-in decisions (do not silently change without asking)
 
@@ -146,6 +151,11 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   user-adjustable 55–71, capped at the statutory deadline of 71); the
   pension-income credits, RRIF minimums and RRSP-contribution redirect all
   start at the conversion age.
+- **Monthly meltdown is optional and pre-QPP**:
+  `monthly_meltdown` (today's CAD/month, inflation-indexed) funds a TFSA
+  deposit from RRIF withdrawals in retirement years with `age < qpp_start_age`
+  only; the RRIF withdrawal is grossed up for tax so the full target lands in
+  the TFSA; default 0 = off.
 - **Quebec-specific**: QPP, OAS, RRSP/TFSA/RRIF terminology;
   bilingual labels, English primary.
 - **Automatic progressive income tax** (no tax inputs): 2026 federal + Quebec
@@ -164,14 +174,18 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 
 ## Verification status
 
-- 47/47 pytest tests passing (17 tax unit tests + model/CSV tests; includes
+- 53/53 pytest tests passing (17 tax unit tests + model/CSV tests; includes
   exact bracket/credit/abatement math, the TP-1.D.B-V line-361 phase-out,
-  exhaustion-year, RRIF-minimum (incl. early conversion), linear
+  exhaustion-year, RRIF-minimum (incl. early conversion), monthly meltdown
+  (TFSA reinvestment, stop-at-QPP, clamping, indexing), linear
   income-decline, tax/clawback columns, MC seed reproducibility).
 - Streamlit `AppTest` smoke test: default run, widget change (QPP start 70),
   and invalid-input path — no exceptions.
 - Real server boot: HTTP 200, `/_stcore/health` → `ok`.
-- Behavioral sanity confirmed: deferring QPP 65→70 raises success rate;
+- Behavioral sanity confirmed: ~$550/mo monthly meltdown on the defaults
+  removes the effective-rate jump at QPP start (18.55% → ~15.6% at 72, RRIF
+  balance at 72 ~$461k vs $665k) and cuts total retirement tax ~$28k;
+  deferring QPP 65→70 raises success rate;
   clawback reduces OAS exactly by 15% of income above threshold; QPP@60/65/70
   show the expected portfolio-drawdown tradeoff on tight portfolios; the
   default scenario's marginal tax rate at retirement (~36%) matches the

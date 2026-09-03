@@ -9,6 +9,10 @@ The model is deliberately simple and transparent:
   retirement age; statutory deadline 71) with mandatory minimum withdrawals
   (Income Tax Regulations s. 7308); any after-tax surplus from a minimum that
   exceeds the income need is reinvested in the TFSA (simplification).
+- An optional monthly TFSA savings target (today's dollars, inflation-indexed)
+  is funded from RRIF withdrawals each retirement year before QPP starts
+  (a "meltdown" that shrinks the RRIF); the savings are deposited in the TFSA
+  after tax.
 - Withdrawals come from non-registered first, then RRSP/RRIF (grossed up for
   tax), then TFSA.
 - Income tax is modeled automatically from the 2026 federal + Quebec
@@ -40,6 +44,7 @@ from constants import (
     DEFAULT_CURRENT_AGE,
     DEFAULT_END_AGE,
     DEFAULT_END_INCOME_RATIO,
+    DEFAULT_MONTHLY_MELTDOWN,
     DEFAULT_RRIF_CONVERSION_AGE,
     DEFAULT_INFLATION,
     DEFAULT_MONTE_CARLO_SIMS,
@@ -114,6 +119,7 @@ class PlanInputs:
     oas_start_age: int = DEFAULT_OAS_START_AGE
     oas_clawback: bool = DEFAULT_OAS_CLAWBACK
     rrif_conversion_age: int | None = DEFAULT_RRIF_CONVERSION_AGE  # None = convert RRSP to RRIF at retirement age (deadline 71)
+    monthly_meltdown: float = DEFAULT_MONTHLY_MELTDOWN      # monthly TFSA savings funded from RRIF withdrawals (meltdown), today's dollars; applies from retirement until QPP starts
 
     # Monte Carlo
     num_sims: int = DEFAULT_MONTE_CARLO_SIMS
@@ -144,6 +150,7 @@ def validate(p: PlanInputs) -> list[str]:
         ("Target monthly income", p.target_monthly_income),
         ("QPP monthly at 65", p.qpp_monthly_at_65),
         ("OAS monthly", p.oas_monthly),
+        ("Monthly meltdown", p.monthly_meltdown),
     ):
         if v < 0:
             errs.append(f"{label} cannot be negative.")
@@ -324,11 +331,22 @@ def step_year(
 
     # 2. RRSP/RRIF: solve the gross-up against the real tax function. The RRIF
     #    minimum is a floor on the withdrawal, even when there is no income gap.
+    #    An optional monthly TFSA savings target (funded from RRIF withdrawals,
+    #    in today's dollars, inflation-indexed) is added to the after-tax need
+    #    each retirement year before QPP starts; the resulting after-tax
+    #    surplus is deposited in the TFSA in step 4 (spending is covered
+    #    first).
+    savings = (
+        p.monthly_meltdown * 12.0 * infl
+        if (not working and age < p.qpp_start_age)
+        else 0.0
+    )
     rrsp_gross = 0.0
-    if rrsp > MONEY_EPS and (remaining > MONEY_EPS or rrif_min > MONEY_EPS):
+    if rrsp > MONEY_EPS and (remaining > MONEY_EPS or rrif_min > MONEY_EPS or savings > MONEY_EPS):
+        rrsp_after_tax_need = remaining + savings
         solved = (
-            _solve_rrsp_gross(p, age, conv_age, cpp_income, oas_gross, remaining, rrsp, year)
-            if remaining > MONEY_EPS
+            _solve_rrsp_gross(p, age, conv_age, cpp_income, oas_gross, rrsp_after_tax_need, rrsp, year)
+            if rrsp_after_tax_need > MONEY_EPS
             else 0.0
         )
         rrsp_gross = min(rrsp, max(solved, rrif_min))
@@ -535,6 +553,7 @@ def build_result(p: PlanInputs, rows: list[dict], mc: dict) -> dict:
         ("TFSA monthly contribution (CAD)", p.tfsa_monthly),
         ("Non-registered balance (CAD)", p.nonreg_balance),
         ("Non-registered monthly contribution (CAD)", p.nonreg_monthly),
+        ("Monthly meltdown (CAD)", p.monthly_meltdown),
         ("Annual return (%)", _fmt_pct(p.annual_return)),
         ("Inflation (%)", _fmt_pct(p.inflation_rate)),
         ("Return volatility, Monte Carlo (%)", _fmt_pct(p.volatility)),

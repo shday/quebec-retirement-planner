@@ -58,6 +58,16 @@ with st.sidebar:
     escalation = st.number_input("Contribution escalation (%/yr)", 0.0, 10.0, C.DEFAULT_CONTRIBUTION_ESCALATION * 100, step=0.5, format="%.2f")
 
     st.header("🏖️ Retirement income")
+    monthly_meltdown = st.number_input(
+        "Monthly meltdown (CAD, today's $)",
+        0, 100_000, int(C.DEFAULT_MONTHLY_MELTDOWN), step=100, format="%d",
+    )
+    st.caption(
+        "Save this much into your TFSA each month from retirement until QPP "
+        "starts, funded by RRIF withdrawals (taxed first; the after-tax amount "
+        "is deposited in the TFSA). Shrinks the RRIF so the mandatory minimums "
+        "don't force extra taxable income once QPP/OAS start."
+    )
     target_income = st.number_input("Target monthly income at retirement (today's CAD)", 0, 100_000, C.DEFAULT_TARGET_MONTHLY_INCOME, step=250, format="%d")
     end_income_ratio = st.slider(
         "Income at end age (% of retirement income)",
@@ -93,7 +103,6 @@ with st.sidebar:
             "RRIF conversion age",
             C.RRIF_CONVERSION_MIN_AGE, C.RRIF_CONVERSION_AGE, C.RRIF_CONVERSION_AGE, step=1, format="%d",
         )
-
     st.header("🧾 Tax")
     st.caption(
         "Income tax is modeled automatically: progressive federal (14%–33%) "
@@ -131,6 +140,7 @@ p = PlanInputs(
     oas_start_age=int(oas_start),
     oas_clawback=bool(oas_clawback),
     rrif_conversion_age=rrif_conv_age_input,
+    monthly_meltdown=float(monthly_meltdown),
 )
 
 errors = validate(p)
