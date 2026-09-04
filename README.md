@@ -71,7 +71,11 @@ Each year from your current age to your end age:
   grossed up for tax (the savings land in the TFSA after tax), shrinking the
   RRIF so the mandatory minimums stop forcing extra taxable income once QPP/OAS
   cover most of the need (e.g., the default scenario's effective-rate jump at
-  QPP start drops from 18.55% to ~15.6% with ~$550/month of savings).
+  QPP start drops from 18.55% to ~15.6% with ~$550/month of savings). The
+  projection reports the meltdown-funded gross withdrawal per year
+  (`meltdown_gross`); a second chart shows before-tax income (gross receipts
+  minus that meltdown-funded gross) beside the TFSA balance, both in today's
+  dollars.
 - If accounts run out before your end age, the first shortfall year is flagged
   as the **exhaustion year**.
 

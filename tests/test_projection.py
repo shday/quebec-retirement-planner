@@ -308,6 +308,37 @@ def test_oas_age_75_supplement():
     assert by_age[76]["oas"] == pytest.approx(734.95 * 12 * 1.10)
 
 
+def test_meltdown_gross_withdrawal_exposed():
+    # The meltdown-funded portion of the gross withdrawal is exposed per row:
+    # withdrawal (with meltdown) - meltdown_gross == withdrawal (without).
+    def run(melt):
+        p = PlanInputs(
+            current_age=59, retirement_age=60, end_age=71,
+            rrsp_balance=500_000, rrsp_monthly=0,
+            tfsa_balance=0, tfsa_monthly=0,
+            nonreg_balance=0, nonreg_monthly=0,
+            annual_return=0.0, inflation_rate=0.0,
+            qpp_monthly_at_65=0.0, oas_monthly=0.0,
+            target_monthly_income=2_000,
+            rrif_conversion_age=71,  # no mandatory minimum until 71
+            monthly_meltdown=melt,
+            qpp_start_age=70,
+        )
+        return {r["age"]: r for r in deterministic_projection(p)}
+
+    with_melt = run(1_000.0)   # 12,000/yr into the TFSA
+    without = run(0.0)
+    for age in range(60, 70):
+        w = with_melt[age]
+        assert "meltdown_gross" in w
+        assert w["meltdown_gross"] > 0
+        # The spending-only gross equals the no-meltdown withdrawal exactly.
+        assert w["withdrawal"] - w["meltdown_gross"] == pytest.approx(without[age]["withdrawal"])
+    # Meltdown stops at the QPP start age (70): nothing extra from 70 on.
+    assert with_melt[70]["meltdown_gross"] == pytest.approx(0.0)
+    assert with_melt[71]["meltdown_gross"] == pytest.approx(0.0)
+
+
 def test_pensions_are_taxable():
     p = PlanInputs(
         current_age=65, retirement_age=65, end_age=65,

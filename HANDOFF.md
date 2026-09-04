@@ -30,7 +30,7 @@ Dependencies: `requirements.txt` (streamlit, plotly) and
 | File | Role |
 | --- | --- |
 | `app.py` | Streamlit UI: sidebar inputs, 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, 4 download buttons. Thin glue only. No tax inputs — the tax section is an informational caption. |
-| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `rrif_conversion_age()` (resolves the RRSP→RRIF conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns an 11-tuple including tax paid, OAS clawback, RRIF minimum, marginal/effective rates), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). |
+| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `rrif_conversion_age()` (resolves the RRSP→RRIF conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns a 12-tuple including tax paid, OAS clawback, RRIF minimum, marginal/effective rates, meltdown gross), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). |
 | `tax.py` | The income tax model (pure, stdlib): `scale()` (base-year → year indexation), `federal_bracket_tax()` / `quebec_bracket_tax()`, `federal_credits()` / `quebec_credits()` (basic personal, age 65+, pension-income; phase-outs), `income_tax()` (returns fed/QC payable after credits and the Quebec abatement), `oas_recovery()` (clawback), `marginal_burden_rate()` (numeric marginal of income tax + recovery), `eligible_pension_income()` (RRIF payments only, from the conversion age). |
 | `constants.py` | Statutory constants with cited sources: RRIF minimum factors, QPP/OAS adjustment rules, 2025 pension maxima, 2026 federal/Quebec tax brackets, credits and phase-outs, planning defaults. |
 | `export.py` | `projection_csv()`, `summary_csv()`, `montecarlo_csv()`, `zip_bytes()`. Raw numeric cells (2 decimals, no thousands separators) so Google Sheets imports them as numbers. |
@@ -81,7 +81,11 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
    target is added to the after-tax need the RRIF solve targets
    (`after-tax need = spending + savings`), so the RRIF withdrawal is grossed
    up for tax and the savings are deposited in the TFSA via the surplus logic
-   (spending is covered first). If accounts run dry, `shortfall` records the unmet gap
+   (spending is covered first). The row also reports `meltdown_gross`: the
+   portion of that year's gross RRIF withdrawal that funds the meltdown (the
+   spending-only gross is solved separately with the same tax function and
+   clamps, then subtracted, so `withdrawal − meltdown_gross` equals the
+   no-meltdown withdrawal). If accounts run dry, `shortfall` records the unmet gap
    for that year (first such year = the **exhaustion year**). If the need is
    already covered but an RRIF minimum exists (working past the conversion
    age, or pensions cover the target after tax), the minimum is still
@@ -94,11 +98,12 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
    income tax on taxable income), `oas_clawback` (gross OAS − net OAS),
    `rrif_min` (mandatory minimum RRSP/RRIF withdrawal, 0 before the
    conversion age),
-   `marginal_rate` (marginal income-tax+recovery rate on the year's income)
-   and `effective_rate` = `(tax_paid + oas_clawback) / taxable`. `step_year`
-   returns an 11-tuple:
+   `marginal_rate` (marginal income-tax+recovery rate on the year's income),
+   `effective_rate` = `(tax_paid + oas_clawback) / taxable`, and
+   `meltdown_gross` (0 when the meltdown is off or after QPP starts).
+   `step_year` returns a 12-tuple:
    `(balances, withdrawal, shortfall, cpp, oas, target_monthly, tax_paid,
-   oas_clawback, rrif_min, marginal_rate, effective_rate)`.
+   oas_clawback, rrif_min, marginal_rate, effective_rate, meltdown_gross)`.
 
 ## Key statutory values (all sourced in `constants.py`)
 

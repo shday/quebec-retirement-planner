@@ -240,6 +240,44 @@ fig.update_layout(
 )
 st.plotly_chart(fig, width="stretch")
 
+# ---------------------------------------------------------------------------
+# Chart 2: before-tax income vs TFSA balance, in today's dollars
+# ---------------------------------------------------------------------------
+retirement_rows = [r for r in rows if r["age"] >= p.retirement_age]
+income_today = []
+tfsa_today = []
+for r in retirement_rows:
+    infl = (1.0 + p.inflation_rate) ** (r["age"] - p.current_age)
+    gross = r["cpp"] + (r["oas"] + r["oas_clawback"]) + r["withdrawal"]
+    income_today.append((gross - r["meltdown_gross"]) / infl)
+    tfsa_today.append(r["tfsa"] / infl)
+fig2 = go.Figure()
+years2 = [r["year"] for r in retirement_rows]
+fig2.add_trace(
+    go.Bar(
+        x=years2, y=income_today,
+        name="Before-tax income (excl. meltdown)",
+        marker_color="#1f77b4",
+    )
+)
+fig2.add_trace(
+    go.Bar(
+        x=years2, y=tfsa_today,
+        name="TFSA balance",
+        marker_color="#ff7f0e",
+    )
+)
+fig2.update_layout(
+    title="Before-tax income and TFSA balance by year (today's dollars)",
+    xaxis_title="Year",
+    yaxis_title="CAD (today's $)",
+    barmode="group",
+    hovermode="x unified",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+    margin=dict(t=60, b=30),
+)
+st.plotly_chart(fig2, width="stretch")
+
 st.divider()
 
 # ---------------------------------------------------------------------------
@@ -274,6 +312,10 @@ st.dataframe(
     width="stretch",
     height=440,
     column_config={
+        "Age": st.column_config.NumberColumn(
+            label="Age",
+            pinned=True,
+        ),
         "Income %": st.column_config.NumberColumn(
             label="Income %",
             help="Income target for the year as a % of the target at retirement (declines linearly to the end-age level).",

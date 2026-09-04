@@ -268,22 +268,24 @@ def step_year(
     annual_return: float,
     year_offset: int,
     year: int,
-) -> tuple[tuple[float, float, float], float, float, float, float, float, float, float, float, float, float]:
+) -> tuple[tuple[float, float, float], float, float, float, float, float, float, float, float, float, float, float]:
     """Advance one year for a given age.
 
     Returns (new_balances, withdrawal, shortfall, cpp_income, oas_income,
     target_monthly, tax_paid, oas_clawback, rrif_min, marginal_rate,
-    effective_rate) where balances is (rrsp, tfsa, nonreg) at the end of the
-    previous year, withdrawal is gross cash leaving the accounts during the
-    year, target_monthly is the inflation-indexed monthly income target
-    (already reduced by the linear income decline), tax_paid is the federal +
-    Quebec income tax on all taxable income (CPP + gross OAS + RRSP/RRIF
-    withdrawals - both pensions are fully taxable), oas_clawback is the OAS
-    recovery tax amount, rrif_min is the mandatory minimum RRSP/RRIF
+    effective_rate, meltdown_gross) where balances is (rrsp, tfsa, nonreg) at
+    the end of the previous year, withdrawal is gross cash leaving the
+    accounts during the year, target_monthly is the inflation-indexed monthly
+    income target (already reduced by the linear income decline), tax_paid is
+    the federal + Quebec income tax on all taxable income (CPP + gross OAS +
+    RRSP/RRIF withdrawals - both pensions are fully taxable), oas_clawback is
+    the OAS recovery tax amount, rrif_min is the mandatory minimum RRSP/RRIF
     withdrawal (0 before the conversion age), marginal_rate is the marginal
     income-tax+recovery rate on the settled income (used to gross up the
-    withdrawal) and effective_rate is (tax_paid + oas_clawback) / taxable
-    income.
+    withdrawal), effective_rate is (tax_paid + oas_clawback) / taxable income
+    and meltdown_gross is the portion of the RRSP/RRIF gross withdrawal that
+    funds the monthly meltdown TFSA savings (0 when the meltdown is off or
+    after QPP starts).
     """
     rrsp, tfsa, nonreg = balances
     working = age < p.retirement_age
@@ -347,6 +349,7 @@ def step_year(
         else 0.0
     )
     rrsp_gross = 0.0
+    meltdown_gross = 0.0
     if rrsp > MONEY_EPS and (remaining > MONEY_EPS or rrif_min > MONEY_EPS or savings > MONEY_EPS):
         rrsp_after_tax_need = remaining + savings
         solved = (
@@ -355,6 +358,18 @@ def step_year(
             else 0.0
         )
         rrsp_gross = min(rrsp, max(solved, rrif_min))
+        if savings > MONEY_EPS:
+            # Gross that would be withdrawn without the meltdown (spending
+            # only). The meltdown-funded portion of the gross is the
+            # difference: what enabling the meltdown adds to the withdrawal
+            # this year (RRIF-minimum floor and rrsp cap identical in both).
+            solved_spend = (
+                _solve_rrsp_gross(p, age, conv_age, cpp_income, oas_gross, remaining, rrsp, year)
+                if remaining > MONEY_EPS
+                else 0.0
+            )
+            rrsp_gross_spend = min(rrsp, max(solved_spend, rrif_min))
+            meltdown_gross = max(0.0, rrsp_gross - rrsp_gross_spend)
         rrsp -= rrsp_gross
         withdrawal += rrsp_gross
 
@@ -425,6 +440,7 @@ def step_year(
         rrif_min,
         marginal_rate,
         effective_rate,
+        meltdown_gross,
     )
 
 
@@ -449,6 +465,7 @@ def deterministic_projection(p: PlanInputs) -> list[dict]:
             rrif_min,
             marginal_rate,
             effective_rate,
+            meltdown_gross,
         ) = step_year(p, age, balances, p.annual_return, offset, start_year + offset)
         working = age < p.retirement_age
         rows.append(
@@ -470,6 +487,7 @@ def deterministic_projection(p: PlanInputs) -> list[dict]:
                 "cpp": cpp,
                 "oas": oas,
                 "oas_clawback": oas_clawback,
+                "meltdown_gross": meltdown_gross,
             }
         )
     return rows
@@ -511,7 +529,7 @@ def monte_carlo(p: PlanInputs, num_sims: int | None = None, seed: int | None = N
         for offset, age in enumerate(years):
             # Lognormal annual return with mean p.annual_return and std p.volatility.
             r = math.exp(mu - 0.5 * sigma * sigma + sigma * rng.gauss(0.0, 1.0)) - 1.0
-            balances, _wd, shortfall, _cpp, _oas, _target, _tax, _claw, _rrif, _marg, _eff = step_year(
+            balances, _wd, shortfall, _cpp, _oas, _target, _tax, _claw, _rrif, _marg, _eff, _melt = step_year(
                 p, age, balances, r, offset, start_year + offset
             )
             year_totals[offset].append(balances[0] + balances[1] + balances[2])
