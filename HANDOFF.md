@@ -53,8 +53,11 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 3. **Growth**: each balance × `(1 + annual_return)`.
 4. **Pensions** (only in retirement years — a deliberate simplification): QPP
    = user's age-65 figure × `qpp_adjustment(start_age)` × `(1+inflation)^offset`
-   × 12; OAS similarly with `oas_adjustment()` and optional clawback. Both
-   start only at their start age and only at/after retirement age.
+   × 12; OAS similarly with `oas_adjustment()` and optional clawback, plus the
+   **+10% age-75 top-up** (`OAS_SUPPLEMENT_AT_75`) applied once `age ≥ 75`.
+   Both start only at their start age and only at/after retirement age. The app's
+   QPP input is **% of the maximum at 65** (default 85%); the model stores the
+   derived monthly dollars in `qpp_monthly_at_65`.
 5. **Income need** (retirement years): the monthly target declines linearly via
    `income_fraction(p, age)` from 1.0 at `retirement_age` to
    `end_income_ratio` (default 0.6) at `end_age`, inflation-indexed.
@@ -99,12 +102,14 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 
 ## Key statutory values (all sourced in `constants.py`)
 
-- QPP max at 65, 2025: **$1,395.25** (user should use their own Retraite
-  Québec figure). Start 60–72: −0.6%/month before 65, +0.7%/month after 65
+- QPP max at 65, 2025: **$1,395.25** (app input is % of max, default 85% →
+  ~$1,185.96/mo). Start 60–72: −0.6%/month before 65, +0.7%/month after 65
   (CPP-aligned rates since Jan 2024) → factors 0.64 at 60, 1.0 at 65, 1.42 at
   70, 1.588 at 72. Since 2026, QPP deferral runs to 72 (max +58.8%); CPP still
   caps at 70.
-- OAS max 65–74, 2025: **$734.95** (indexed quarterly). Defer to 70 = +36%.
+- OAS max 65–74, 2025: **$734.95** (indexed quarterly); 75+ **$808.45** with the
+  +10% top-up (Budget 2022) that the model applies from `OAS_SUPPLEMENT_AGE`.
+  Defer to 70 = +36%.
   Clawback (ITA s. 180.2): 15% of net income above the threshold (2026:
   $95,323, based on 2026 income), capped at OAS. The model
   **indexes the threshold to inflation** each year and **solves the clawback

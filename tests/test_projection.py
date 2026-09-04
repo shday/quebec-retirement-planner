@@ -288,6 +288,26 @@ def test_oas_clawback_threshold_indexed_to_inflation():
     assert c66["oas_clawback"] == pytest.approx(c65["oas_clawback"] * 1.02)
 
 
+def test_oas_age_75_supplement():
+    # +10% OAS top-up from age 75 (Budget 2022): $734.95 x 1.10 = $808.45/mo.
+    p = PlanInputs(
+        current_age=65, retirement_age=65, end_age=76,
+        rrsp_balance=0, rrsp_monthly=0,
+        tfsa_balance=1_000_000, tfsa_monthly=0,  # TFSA covers any income gap
+        nonreg_balance=0, nonreg_monthly=0,
+        annual_return=0.0, inflation_rate=0.0,
+        target_monthly_income=1_000, end_income_ratio=1.0,
+        qpp_monthly_at_65=0.0, oas_monthly=734.95,
+        qpp_start_age=65, oas_start_age=65,
+        oas_clawback=False,
+    )
+    by_age = {r["age"]: r for r in deterministic_projection(p)}
+    assert by_age[65]["oas"] == pytest.approx(734.95 * 12)
+    assert by_age[74]["oas"] == pytest.approx(734.95 * 12)
+    assert by_age[75]["oas"] == pytest.approx(734.95 * 12 * 1.10)
+    assert by_age[76]["oas"] == pytest.approx(734.95 * 12 * 1.10)
+
+
 def test_pensions_are_taxable():
     p = PlanInputs(
         current_age=65, retirement_age=65, end_age=65,

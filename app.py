@@ -75,15 +75,26 @@ with st.sidebar:
     )
     st.caption("Income needs decline linearly from retirement to end age.")
     st.caption("Pensions are indexed to inflation from today.")
-    qpp_monthly = st.number_input("QPP monthly at 65 (today's CAD)", 0.0, 5_000.0, C.QPP_MAX_AT_65_2025, step=25.0, format="%.2f")
-    st.caption(f"2025 maximum: {C.QPP_MAX_AT_65_2025:,.2f} — use your own figure from Retraite Québec.")
+    qpp_pct = st.slider(
+        "QPP at 65 (% of maximum)",
+        0, 100, int(C.DEFAULT_QPP_PCT_OF_MAX * 100), step=1,
+    )
+    qpp_monthly = qpp_pct / 100.0 * C.QPP_MAX_AT_65_2025
+    st.caption(
+        f"{qpp_pct}% of the 2025 maximum ({C.QPP_MAX_AT_65_2025:,.2f}/month) "
+        f"= {qpp_monthly:,.2f}/month at 65, in today's CAD. "
+        "Check Retraite Québec: your statement pension ÷ the maximum."
+    )
     qpp_start = st.select_slider(
         "QPP start age",
         options=range(C.QPP_MIN_START_AGE, C.QPP_MAX_START_AGE + 1),
         value=max(C.QPP_MIN_START_AGE, min(C.DEFAULT_QPP_START_AGE, C.QPP_MAX_START_AGE)),
     )
     oas_monthly = st.number_input("OAS monthly at 65 (today's CAD)", 0.0, 3_000.0, C.OAS_MAX_2025, step=10.0, format="%.2f")
-    st.caption(f"2025 maximum (65-74): {C.OAS_MAX_2025:,.2f} — use your own figure from Service Canada.")
+    st.caption(
+        f"2025 maxima: {C.OAS_MAX_2025:,.2f} (65–74) / {C.OAS_MAX_75_2025:,.2f} (75+) — "
+        "use your own figure from Service Canada. The model applies the +10% top-up automatically at 75."
+    )
     oas_options = (65, C.OAS_DEFERRAL_MAX_AGE)  # statutory choices
     oas_index = oas_options.index(C.DEFAULT_OAS_START_AGE) if C.DEFAULT_OAS_START_AGE in oas_options else 0
     oas_start = st.radio("OAS start age", options=oas_options, index=oas_index, horizontal=True)

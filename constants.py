@@ -4,7 +4,9 @@ All monetary amounts are in Canadian dollars (CAD).
 
 Sources (accessed 2025-08-30 / 2026-09-01):
 - CPP maximum retirement pension at age 65 ($1,433.00, new benefits January
-  2025), OAS maximum (65-74) July-September 2025 ($734.95), OAS deferral
+  2025), OAS maximum (65-74) July-September 2025 ($734.95), OAS maximum
+  (75+) July-September 2025 ($808.45, the +10% age-75 top-up from Budget
+  2022), OAS deferral
   (+0.6%/month, up to +36% at 70) and OAS repayment (clawback) for 2026
   income (threshold $95,323, 15% recovery rate):
   Canada.ca "Maximum benefit amounts and related figures - CPP 2025 and
@@ -66,6 +68,9 @@ QPP_MAX_START_AGE = 72                 # deferral extended from 70 to 72 in 2026
 # OAS - Old Age Security (federal, applies in Quebec)
 # ---------------------------------------------------------------------------
 OAS_MAX_2025 = 734.95                  # maximum monthly OAS, age 65-74, July-September 2025 (indexed quarterly)
+OAS_MAX_75_2025 = 808.45               # maximum monthly OAS, age 75+, July-September 2025 (10% top-up included)
+OAS_SUPPLEMENT_AT_75 = 1.10            # +10% permanent OAS top-up from age 75 (Budget 2022)
+OAS_SUPPLEMENT_AGE = 75
 OAS_DEFERRAL_PER_MONTH = 0.006         # +0.6%/month deferred past 65, up to +36% at 70
 OAS_DEFERRAL_MAX_AGE = 70
 OAS_CLAWBACK_RATE = 0.15               # 15% recovery of income above threshold
@@ -175,6 +180,7 @@ DEFAULT_CONTRIBUTION_ESCALATION = 0.0   # annual growth of monthly contributions
 # Retirement income
 DEFAULT_TARGET_MONTHLY_INCOME = 4_750  # today's CAD
 DEFAULT_END_INCOME_RATIO = 0.65         # income at end age, as a fraction of income at retirement
+DEFAULT_QPP_PCT_OF_MAX = 0.85           # QPP at 65, as a fraction of the maximum pension (user input)
 DEFAULT_QPP_START_AGE = 72
 DEFAULT_OAS_START_AGE = 70
 DEFAULT_OAS_CLAWBACK = True

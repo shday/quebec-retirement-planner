@@ -43,8 +43,8 @@ Each year from your current age to your end age:
 - **Working years** (`age < retirement age`): monthly contributions (escalated)
   are added to each account, then all balances grow at the assumed return.
 - **Retirement years**: pensions are paid once started — QPP (adjusted for
-  start age, index-linked) and OAS (deferred +36% if started at 70, optional
-  clawback). The **income target declines linearly** from 100% at the
+  start age, index-linked) and OAS (deferred +36% if started at 70, +10% from
+  age 75, optional clawback). The **income target declines linearly** from 100% at the
   retirement age down to the "income at end age" percentage at your end age
   (in today's dollars, then inflation-indexed). QPP and OAS are
   **fully taxable**; the remaining after-tax income need is withdrawn from
@@ -106,8 +106,8 @@ money).
 | --- | --- | --- |
 | Target monthly income at retirement | $4,000 | Your own lifestyle estimate |
 | Income at end age (% of retirement) | 60% (linear decline) | Your own assumption |
-| QPP monthly at 65 | $1,395.25 (2025 max) | [Retraite Québec — use your own statement figure](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
-| OAS monthly at 65 | $734.95 (2025 max, 65–74) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
+| QPP at 65 | 85% of maximum (≈$1,185.96/mo, 2025 max $1,395.25) | [Retraite Québec — your statement pension ÷ the maximum](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
+| OAS monthly at 65 | $734.95 (2025 max, 65–74; $808.45 at 75+) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
 | RRSP → RRIF conversion age | At retirement (deadline 71) | Your own plan (early conversion earns the pension-income credits sooner) |
 | Monthly meltdown | $0/mo (off) | Optional: save into the TFSA before QPP starts (funded by grossed-up RRIF withdrawals) |
 | Income tax | Automatic (no inputs) | 2026 federal + Quebec brackets/credits, indexed to inflation |
@@ -116,7 +116,8 @@ money).
 QPP start age 60–72 uses the statutory adjustment shared with CPP since the
 January 2024 alignment: **−0.6%/month** before 65, **+0.7%/month** after 65 —
 since 2026 the deferral runs to 72 (maximum **+58.8%**; CPP still caps at 70).
-OAS can start at 65 or be deferred to 70 for **+36%**.
+OAS can start at 65 or be deferred to 70 for **+36%**, and gets an automatic
+**+10% top-up from age 75** (Budget 2022) on top of that.
 
 ## Simplifications & scope
 

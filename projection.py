@@ -3,8 +3,8 @@
 The model is deliberately simple and transparent:
 - Three accounts: RRSP (RRSP, pre-tax), TFSA (TFSA, tax-free), non-registered.
 - Pensions (only during retirement years): QPP and OAS, both
-  inflation-indexed from today, with statutory start-age adjustments and an
-  optional OAS clawback approximation.
+  inflation-indexed from today, with statutory start-age adjustments, the
+  +10% OAS top-up from age 75, and an optional OAS clawback approximation.
 - RRSP converts to an RRIF at the chosen conversion age (default: the
   retirement age; statutory deadline 71) with mandatory minimum withdrawals
   (Income Tax Regulations s. 7308); any after-tax surplus from a minimum that
@@ -52,6 +52,7 @@ from constants import (
     DEFAULT_NONREG_MONTHLY,
     DEFAULT_OAS_CLAWBACK,
     DEFAULT_OAS_START_AGE,
+    DEFAULT_QPP_PCT_OF_MAX,
     DEFAULT_QPP_START_AGE,
     DEFAULT_RETIREMENT_AGE,
     DEFAULT_RRSP_BALANCE,
@@ -66,6 +67,8 @@ from constants import (
     OAS_MAX_2025,
     OAS_DEFERRAL_MAX_AGE,
     OAS_DEFERRAL_PER_MONTH,
+    OAS_SUPPLEMENT_AGE,
+    OAS_SUPPLEMENT_AT_75,
     QPP_EARLY_REDUCTION_PER_MONTH,
     QPP_LATE_INCREASE_PER_MONTH,
     QPP_MAX_AT_65_2025,
@@ -113,7 +116,7 @@ class PlanInputs:
     # Retirement income
     target_monthly_income: float = DEFAULT_TARGET_MONTHLY_INCOME   # today's dollars
     end_income_ratio: float = DEFAULT_END_INCOME_RATIO             # income at end age, fraction of retirement income
-    qpp_monthly_at_65: float = QPP_MAX_AT_65_2025                  # user's age-65 estimate
+    qpp_monthly_at_65: float = QPP_MAX_AT_65_2025 * DEFAULT_QPP_PCT_OF_MAX  # user's age-65 estimate (default 85% of the maximum)
     qpp_start_age: int = DEFAULT_QPP_START_AGE
     oas_monthly: float = OAS_MAX_2025                              # today's dollars, at 65
     oas_start_age: int = DEFAULT_OAS_START_AGE
@@ -317,6 +320,8 @@ def step_year(
             cpp_income = p.qpp_monthly_at_65 * qpp_adjustment(p.qpp_start_age) * infl * 12.0
         if age >= p.oas_start_age:
             oas_gross = p.oas_monthly * oas_adjustment(p.oas_start_age) * infl * 12.0
+            if age >= OAS_SUPPLEMENT_AGE:
+                oas_gross *= OAS_SUPPLEMENT_AT_75  # +10% top-up from age 75 (Budget 2022)
 
     # After-tax income need from all sources (retirement years only).
     need = target_monthly * 12.0 if not working else 0.0
@@ -560,6 +565,7 @@ def build_result(p: PlanInputs, rows: list[dict], mc: dict) -> dict:
         ("Contribution escalation (%)", _fmt_pct(p.contribution_escalation)),
         ("Target monthly income at retirement (today's CAD)", p.target_monthly_income),
         ("Income at end age (% of retirement income)", _fmt_pct(p.end_income_ratio)),
+        ("QPP at 65 (% of maximum)", round(p.qpp_monthly_at_65 / QPP_MAX_AT_65_2025 * 100.0, 2)),
         ("QPP monthly at 65 (today's CAD)", p.qpp_monthly_at_65),
         ("QPP start age", p.qpp_start_age),
         ("QPP monthly at start age, first year (CAD)", round(qpp_first_year, 2)),
