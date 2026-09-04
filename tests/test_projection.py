@@ -589,3 +589,41 @@ def test_monthly_meltdown_headline_scenario():
     tax_base = sum(r["tax_paid"] for r in base["projection"])
     tax_melt = sum(r["tax_paid"] for r in melt["projection"])
     assert tax_melt < tax_base
+
+
+# ---------------------------------------------------------------------------
+# After-tax netting bugs (regression)
+# ---------------------------------------------------------------------------
+def test_no_phantom_tfsa_deposit_once_pensions_start():
+    # 3% return, all else default: once QPP/OAS start (age 72) the RRIF
+    # withdrawal is income-driven (it still exceeds the RRIF minimum because
+    # pensions do not fully cover the need). Pensions must be netted AFTER their
+    # own income tax; netting them gross used to create a phantom "surplus"
+    # equal to the pension tax that was reinvested in the TFSA every year.
+    p = PlanInputs(annual_return=0.03)
+    rows = deterministic_projection(p)
+    by_age = {r["age"]: r for r in rows}
+    # No surplus reinvestment is genuine here, so the TFSA never grows.
+    for age in range(p.retirement_age, p.end_age + 1):
+        assert by_age[age]["tfsa"] == pytest.approx(0.0, abs=1.0)
+
+
+def test_no_withdrawal_jump_when_rrsp_depletes_with_meltdown():
+    # 3% + monthly meltdown 500: the meltdown shrinks the RRIF so it is fully
+    # depleted around age 79. When the RRSP hits zero (rrsp_gross == 0) the
+    # pension income must still be netted against the income need before drawing
+    # the TFSA. Previously the netting was skipped that year, so the whole need
+    # came from the TFSA on top of the pensions - a sudden ~69k withdrawal at
+    # age 80 pushing income far above target.
+    p = PlanInputs(annual_return=0.03, monthly_meltdown=500)
+    rows = deterministic_projection(p)
+    by_age = {r["age"]: r for r in rows}
+    # The RRSP is gone by 80.
+    assert by_age[80]["rrsp"] == pytest.approx(0.0)
+    # Withdrawals stay smooth and near the after-tax income gap, never the full
+    # need (~69k/yr in today's $ + inflation). No shortfalls either.
+    for age in range(79, p.end_age + 1):
+        assert by_age[age]["withdrawal"] < 25_000
+        assert by_age[age]["shortfall"] == pytest.approx(0.0)
+    # And depletion is smooth (no big year-over-year jump after the RRSP is gone).
+    assert by_age[81]["withdrawal"] <= by_age[80]["withdrawal"]

@@ -373,19 +373,36 @@ def step_year(
     #    any surplus from the RRSP/RRIF withdrawal (e.g. the minimum exceeded
     #    the need) is reinvested in the TFSA; TFSA covers the rest.
     shortfall = 0.0
-    if rrsp_gross > MONEY_EPS:
+    if not working:
+        # Net pension income (after the income tax attributable to it) against
+        # the need whether or not an RRSP/RRIF withdrawal happened this year.
+        # (Doing this only inside the rrsp_gross>0 branch would skip it once the
+        # RRSP is fully depleted, causing the TFSA to cover the whole need on
+        # top of the pensions - a sudden withdrawal/income jump at depletion.)
         tax_on_pensions = sum(income_tax(cpp_income + oas_gross, age, 0.0, p.inflation_rate, year))
-        rrsp_net = rrsp_gross - (tax_paid - tax_on_pensions)
-        if not working:
-            pensions_net = cpp_income + oas_income
-            need_from_rrsp = max(0.0, remaining - pensions_net)
-            surplus = rrsp_net - need_from_rrsp
-            if surplus > MONEY_EPS:
-                tfsa += surplus
-            remaining = max(0.0, remaining - (pensions_net + rrsp_net))
-        else:
-            tfsa += rrsp_net  # working year: no retirement need, surplus to TFSA
-            remaining = 0.0
+        rrsp_net = rrsp_gross - (tax_paid - tax_on_pensions) if rrsp_gross > MONEY_EPS else 0.0
+        # Compare on a consistent after-tax basis: rrsp_net is the withdrawal's
+        # after-tax value (gross minus the incremental tax the withdrawal adds
+        # on top of pensions), so pensions must be netted of their own income
+        # tax too (tax_on_pensions), not counted gross. Counting pensions gross
+        # would understate need_from_rrsp and thus overstate the surplus
+        # reinvested in the TFSA by exactly the tax on the pensions (a phantom
+        # TFSA deposit once pensions start).
+        pensions_after_tax = (cpp_income + oas_income) - tax_on_pensions
+        need_from_rrsp = max(0.0, remaining - pensions_after_tax)
+        surplus = rrsp_net - need_from_rrsp
+        if surplus > MONEY_EPS:
+            tfsa += surplus
+        remaining = max(0.0, remaining - (pensions_after_tax + rrsp_net))
+    else:
+        if rrsp_gross > MONEY_EPS:
+            # Working year: no retirement income need, so any RRSP/RRIF
+            # withdrawal (e.g. a mandatory minimum once the RRSP is closed) is
+            # after-tax surplus reinvested in the TFSA. Pensions are zero while
+            # working, so tax_on_pensions is 0 and rrsp_net is gross - tax.
+            rrsp_net = rrsp_gross - tax_paid
+            tfsa += rrsp_net
+        remaining = 0.0
     if not working and remaining > MONEY_EPS:
         # 3. TFSA last (tax-free).
         take = min(tfsa, remaining)
