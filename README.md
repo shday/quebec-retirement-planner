@@ -109,13 +109,13 @@ money).
 | Input | Default | Source |
 | --- | --- | --- |
 | Target monthly income at retirement | $5,000 | Your own lifestyle estimate |
-| Income at end age (% of retirement) | 60% (linear decline) | Your own assumption |
+| Income at end age (% of retirement) | 65% (linear decline) | Your own assumption |
 | QPP at 65 | 85% of maximum (≈$1,185.96/mo, 2025 max $1,395.25) | [Retraite Québec — your statement pension ÷ the maximum](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
 | OAS monthly at 65 | $734.95 (2025 max, 65–74; $808.45 at 75+) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
 | RRSP → RRIF conversion age | At retirement (deadline 71) | Your own plan (early conversion earns the pension-income credits sooner) |
 | Monthly meltdown | $500/mo | Optional: save into the TFSA before QPP starts (funded by grossed-up RRIF withdrawals) |
 | Income tax | Automatic (no inputs) | 2026 federal + Quebec brackets/credits, indexed to inflation |
-| Return / inflation / volatility | 7% / 2.5% / 10% | Your own assumptions |
+| Return / inflation / volatility | 5% / 2.25% / 5% | Your own assumptions |
 
 QPP start age 60–72 uses the statutory adjustment shared with CPP since the
 January 2024 alignment: **−0.6%/month** before 65, **+0.7%/month** after 65 —

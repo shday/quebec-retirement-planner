@@ -60,7 +60,7 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
    derived monthly dollars in `qpp_monthly_at_65`.
 5. **Income need** (retirement years): the monthly target declines linearly via
    `income_fraction(p, age)` from 1.0 at `retirement_age` to
-   `end_income_ratio` (default 0.6) at `end_age`, inflation-indexed.
+   `end_income_ratio` (default 0.65) at `end_age`, inflation-indexed.
 6. **Taxation** (automatic, no inputs — see `tax.py`): taxable income =
    `CPP + gross OAS + RRSP/RRIF withdrawal` (gross OAS is taxable even when
    clawed back). Tax = federal brackets (2026: 14/20.5/26/29/33%) + Quebec
@@ -149,8 +149,8 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   indexed). The living-alone amount ($2,172) is intentionally not modeled (no
   marital-status input). "Family income" is proxied by the taxpayer's own
   taxable income.
-- Defaults: return 7%, inflation 2.5%, volatility 10%, escalation 0%, income
-  at end age 60% (linear decline), monthly meltdown $500/mo, target monthly
+- Defaults: return 5%, inflation 2.25%, volatility 5%, escalation 0%, income
+  at end age 65% (linear decline), monthly meltdown $500/mo, target monthly
   income $5,000, 1,000 sims, seed 42. No tax default — tax is automatic.
 
 ## Locked-in decisions (do not silently change without asking)
@@ -177,7 +177,7 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   not modeled; working years are not taxed.
 - Pensions counted only from the retirement year onward.
 - **Linear income decline**: retirement spending falls linearly from 100% at
-  retirement to `end_income_ratio` (default 60%) at end age, in real dollars.
+  retirement to `end_income_ratio` (default 65%) at end age, in real dollars.
 - TFSA room limits and GIS are **out of scope** (documented).
 - `PlanInputs` is a **frozen dataclass** (hashable) because `app.py` caches
   `compute()` with `@st.cache_data`. Keep it hashable if you add fields.
