@@ -184,28 +184,35 @@ c5.metric("RRIF conversion year", str(rrif_conversion_age(p)) if p.end_age >= rr
 
 st.divider()
 
+def _k(vals: list[float]) -> list[float]:
+    """Hover values in whole thousands (e.g. 74123 -> 74k)."""
+    return [v / 1000.0 for v in vals]
+
+
 # ---------------------------------------------------------------------------
-# Chart
+# Chart 1: portfolio balance by age (deterministic stacked bars + MC band)
 # ---------------------------------------------------------------------------
+ages = [r["age"] for r in rows]  # index-aligned with rows and the MC arrays
 fig = go.Figure()
-years = mc["years"]
 fig.add_trace(
     go.Scatter(
-        x=years, y=mc["total_p95"], mode="lines", line=dict(width=0),
+        x=ages, y=mc["total_p95"], mode="lines", line=dict(width=0),
         showlegend=False, hoverinfo="skip",
     )
 )
 fig.add_trace(
     go.Scatter(
-        x=years, y=mc["total_p5"], mode="lines", line=dict(width=0),
+        x=ages, y=mc["total_p5"], mode="lines", line=dict(width=0),
         fill="tonexty", fillcolor="rgba(31,119,180,0.20)",
         name="P5-P95 range (Monte Carlo)",
+        customdata=_k(mc["total_p5"]), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig.add_trace(
     go.Scatter(
-        x=years, y=mc["total_p50"], mode="lines", name="Median (Monte Carlo)",
+        x=ages, y=mc["total_p50"], mode="lines", name="Median (Monte Carlo)",
         line=dict(dash="dot"),
+        customdata=_k(mc["total_p50"]), hovertemplate="%{customdata:,.0f}k",
     )
 )
 det_rrsp = [r["rrsp"] for r in rows]
@@ -213,25 +220,28 @@ det_tfsa = [r["tfsa"] for r in rows]
 det_nonreg = [r["nonreg"] for r in rows]
 fig.add_trace(
     go.Bar(
-        x=years, y=det_rrsp, name="RRSP",
+        x=ages, y=det_rrsp, name="RRSP",
         marker_color="#2ca02c", opacity=0.85,
+        customdata=_k(det_rrsp), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig.add_trace(
     go.Bar(
-        x=years, y=det_tfsa, name="TFSA",
+        x=ages, y=det_tfsa, name="TFSA",
         marker_color="#ff7f0e", opacity=0.85,
+        customdata=_k(det_tfsa), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig.add_trace(
     go.Bar(
-        x=years, y=det_nonreg, name="Non-registered",
+        x=ages, y=det_nonreg, name="Non-registered",
         marker_color="#9467bd", opacity=0.85,
+        customdata=_k(det_nonreg), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig.update_layout(
-    title="Total portfolio balance by year",
-    xaxis_title="Year",
+    title="Total portfolio balance by age",
+    xaxis_title="Age",
     yaxis_title="CAD",
     barmode="stack",
     hovermode="x unified",
@@ -242,11 +252,11 @@ st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Chart 2: before-tax income by source (stacked), in today's dollars
-# Each retirement year is one stacked bar: QPP, OAS (net of clawback),
-# account withdrawals for spending, and the meltdown amount on top.
+# Each age from retirement onwards is one stacked bar: QPP, OAS (net of
+# clawback), account withdrawals for spending, and the meltdown on top.
 # ---------------------------------------------------------------------------
 retirement_rows = [r for r in rows if r["age"] >= p.retirement_age]
-years2 = [r["year"] for r in retirement_rows]
+ages2 = [r["age"] for r in retirement_rows]
 qpp_today = []
 oas_today = []
 withdrawals_today = []
@@ -260,31 +270,35 @@ for r in retirement_rows:
 fig2 = go.Figure()
 fig2.add_trace(
     go.Bar(
-        x=years2, y=qpp_today, name="QPP",
+        x=ages2, y=qpp_today, name="QPP",
         marker_color="#1f77b4",
+        customdata=_k(qpp_today), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig2.add_trace(
     go.Bar(
-        x=years2, y=oas_today, name="OAS (net of clawback)",
+        x=ages2, y=oas_today, name="OAS (net of clawback)",
         marker_color="#d62728",
+        customdata=_k(oas_today), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig2.add_trace(
     go.Bar(
-        x=years2, y=withdrawals_today, name="Account withdrawals (spending)",
+        x=ages2, y=withdrawals_today, name="Account withdrawals (spending)",
         marker_color="#2ca02c",
+        customdata=_k(withdrawals_today), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig2.add_trace(
     go.Bar(
-        x=years2, y=meltdown_today, name="Meltdown to TFSA",
+        x=ages2, y=meltdown_today, name="Meltdown to TFSA",
         marker_color="#ff7f0e",
+        customdata=_k(meltdown_today), hovertemplate="%{customdata:,.0f}k",
     )
 )
 fig2.update_layout(
-    title="Before-tax income by source, with meltdown to TFSA, by year (today's dollars)",
-    xaxis_title="Year",
+    title="Before-tax income by source, with meltdown to TFSA, by age (today's dollars)",
+    xaxis_title="Age",
     yaxis_title="CAD (today's $)",
     barmode="stack",
     hovermode="x unified",
