@@ -73,9 +73,9 @@ Each year from your current age to your end age:
   cover most of the need (e.g., the default scenario's effective-rate jump at
   QPP start drops from 18.55% to ~15.6% with ~$550/month of savings). The
   projection reports the meltdown-funded gross withdrawal per year
-  (`meltdown_gross`); a second chart shows before-tax income (gross receipts
-  minus that meltdown-funded gross) beside the TFSA balance, both in today's
-  dollars.
+  (`meltdown_gross`); a second chart stacks each retirement year's before-tax
+  income by source in today's dollars — QPP, OAS (net of clawback), account
+  withdrawals for spending, and the meltdown amount as the top segment.
 - If accounts run out before your end age, the first shortfall year is flagged
   as the **exhaustion year**.
 

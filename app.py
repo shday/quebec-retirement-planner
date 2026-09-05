@@ -241,37 +241,52 @@ fig.update_layout(
 st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------
-# Chart 2: before-tax income vs TFSA balance, in today's dollars
+# Chart 2: before-tax income by source (stacked), in today's dollars
+# Each retirement year is one stacked bar: QPP, OAS (net of clawback),
+# account withdrawals for spending, and the meltdown amount on top.
 # ---------------------------------------------------------------------------
 retirement_rows = [r for r in rows if r["age"] >= p.retirement_age]
-income_today = []
-tfsa_today = []
+years2 = [r["year"] for r in retirement_rows]
+qpp_today = []
+oas_today = []
+withdrawals_today = []
+meltdown_today = []
 for r in retirement_rows:
     infl = (1.0 + p.inflation_rate) ** (r["age"] - p.current_age)
-    gross = r["cpp"] + (r["oas"] + r["oas_clawback"]) + r["withdrawal"]
-    income_today.append((gross - r["meltdown_gross"]) / infl)
-    tfsa_today.append(r["tfsa"] / infl)
+    qpp_today.append(r["cpp"] / infl)
+    oas_today.append(r["oas"] / infl)  # net of clawback
+    withdrawals_today.append((r["withdrawal"] - r["meltdown_gross"]) / infl)
+    meltdown_today.append(r["meltdown_gross"] / infl)
 fig2 = go.Figure()
-years2 = [r["year"] for r in retirement_rows]
 fig2.add_trace(
     go.Bar(
-        x=years2, y=income_today,
-        name="Before-tax income (excl. meltdown)",
+        x=years2, y=qpp_today, name="QPP",
         marker_color="#1f77b4",
     )
 )
 fig2.add_trace(
     go.Bar(
-        x=years2, y=tfsa_today,
-        name="TFSA balance",
+        x=years2, y=oas_today, name="OAS (net of clawback)",
+        marker_color="#d62728",
+    )
+)
+fig2.add_trace(
+    go.Bar(
+        x=years2, y=withdrawals_today, name="Account withdrawals (spending)",
+        marker_color="#2ca02c",
+    )
+)
+fig2.add_trace(
+    go.Bar(
+        x=years2, y=meltdown_today, name="Meltdown to TFSA",
         marker_color="#ff7f0e",
     )
 )
 fig2.update_layout(
-    title="Before-tax income and TFSA balance by year (today's dollars)",
+    title="Before-tax income by source, with meltdown to TFSA, by year (today's dollars)",
     xaxis_title="Year",
     yaxis_title="CAD (today's $)",
-    barmode="group",
+    barmode="stack",
     hovermode="x unified",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
     margin=dict(t=60, b=30),
