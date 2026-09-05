@@ -150,8 +150,8 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   marital-status input). "Family income" is proxied by the taxpayer's own
   taxable income.
 - Defaults: return 7%, inflation 2.5%, volatility 10%, escalation 0%, income
-  at end age 60% (linear decline), monthly meltdown off ($0/mo), 1,000 sims,
-  seed 42. No tax default — tax is automatic.
+  at end age 60% (linear decline), monthly meltdown $500/mo, target monthly
+  income $5,000, 1,000 sims, seed 42. No tax default — tax is automatic.
 
 ## Locked-in decisions (do not silently change without asking)
 
@@ -165,7 +165,7 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   `monthly_meltdown` (today's CAD/month, inflation-indexed) funds a TFSA
   deposit from RRIF withdrawals in retirement years with `age < qpp_start_age`
   only; the RRIF withdrawal is grossed up for tax so the full target lands in
-  the TFSA; default 0 = off.
+  the TFSA; default $500/mo (0 = off).
 - **Quebec-specific**: QPP, OAS, RRSP/TFSA/RRIF terminology;
   bilingual labels, English primary.
 - **Automatic progressive income tax** (no tax inputs): 2026 federal + Quebec

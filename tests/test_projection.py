@@ -44,6 +44,7 @@ def test_zero_growth_contributions_only():
         nonreg_balance=0, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0, volatility=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0, target_monthly_income=0.0,
+        monthly_meltdown=0.0,  # isolate contributions; meltdown off
     )
     rows = deterministic_projection(p)
     assert len(rows) == 11  # ages 30..40 inclusive
@@ -80,6 +81,7 @@ def test_rrif_minimum_at_71_excess_to_tfsa():
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
         target_monthly_income=0.0,
+        monthly_meltdown=0.0,  # isolate the RRIF minimum; meltdown off
     )
     row = deterministic_projection(p)[0]
     rrif_min = 0.0528 * 100_000  # ITR s. 7308 factor at 71
@@ -202,6 +204,7 @@ def test_tax_paid_on_rrsp_withdrawal():
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
         target_monthly_income=2_000, end_income_ratio=1.0,
         rrif_conversion_age=71,  # keep this a pre-conversion RRSP scenario
+        monthly_meltdown=0.0,  # isolate the tax gross-up; meltdown off
     )
     row = deterministic_projection(p)[0]
     gross = row["withdrawal"]
@@ -227,6 +230,7 @@ def test_rrif_minimum_and_tax_column_at_71():
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
         target_monthly_income=0.0,
+        monthly_meltdown=0.0,  # isolate the RRIF minimum; meltdown off
     )
     row = deterministic_projection(p)[0]
     rrif_min = 0.0528 * 100_000
@@ -606,8 +610,8 @@ def test_monthly_meltdown_clamped_by_balance():
 def test_monthly_meltdown_headline_scenario():
     # The default scenario's jump at QPP start (eff 15.89% @71 -> 18.55% @72)
     # disappears once the RRIF is small enough that the minimum stops binding.
-    base = compute_all(PlanInputs())
-    melt = compute_all(PlanInputs(monthly_meltdown=550))
+    base = compute_all(PlanInputs(monthly_meltdown=0.0, target_monthly_income=4_750))
+    melt = compute_all(PlanInputs(monthly_meltdown=550, target_monthly_income=4_750))
     b72 = next(r for r in base["projection"] if r["age"] == 72)
     m72 = next(r for r in melt["projection"] if r["age"] == 72)
     assert b72["effective_rate"] > 0.17  # sanity: the base scenario really jumps
@@ -631,7 +635,7 @@ def test_no_phantom_tfsa_deposit_once_pensions_start():
     # pensions do not fully cover the need). Pensions must be netted AFTER their
     # own income tax; netting them gross used to create a phantom "surplus"
     # equal to the pension tax that was reinvested in the TFSA every year.
-    p = PlanInputs(annual_return=0.03)
+    p = PlanInputs(annual_return=0.03, monthly_meltdown=0.0, target_monthly_income=4_750)
     rows = deterministic_projection(p)
     by_age = {r["age"]: r for r in rows}
     # No surplus reinvestment is genuine here, so the TFSA never grows.
@@ -646,7 +650,7 @@ def test_no_withdrawal_jump_when_rrsp_depletes_with_meltdown():
     # the TFSA. Previously the netting was skipped that year, so the whole need
     # came from the TFSA on top of the pensions - a sudden ~69k withdrawal at
     # age 80 pushing income far above target.
-    p = PlanInputs(annual_return=0.03, monthly_meltdown=500)
+    p = PlanInputs(annual_return=0.03, monthly_meltdown=500, target_monthly_income=4_750)
     rows = deterministic_projection(p)
     by_age = {r["age"]: r for r in rows}
     # The RRSP is gone by 80.

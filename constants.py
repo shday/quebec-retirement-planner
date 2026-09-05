@@ -178,14 +178,14 @@ DEFAULT_VOLATILITY = 0.05               # annual std dev of returns, Monte Carlo
 DEFAULT_CONTRIBUTION_ESCALATION = 0.0   # annual growth of monthly contributions
 
 # Retirement income
-DEFAULT_TARGET_MONTHLY_INCOME = 4_750  # today's CAD
+DEFAULT_TARGET_MONTHLY_INCOME = 5_000  # today's CAD
 DEFAULT_END_INCOME_RATIO = 0.65         # income at end age, as a fraction of income at retirement
 DEFAULT_QPP_PCT_OF_MAX = 0.85           # QPP at 65, as a fraction of the maximum pension (user input)
 DEFAULT_QPP_START_AGE = 72
 DEFAULT_OAS_START_AGE = 70
 DEFAULT_OAS_CLAWBACK = True
 DEFAULT_RRIF_CONVERSION_AGE = None      # None = convert the RRSP to an RRIF at the retirement age (statutory deadline 71)
-DEFAULT_MONTHLY_MELTDOWN = 0.0           # monthly TFSA savings funded from RRIF withdrawals (meltdown), today's CAD; 0 = off
+DEFAULT_MONTHLY_MELTDOWN = 500.0         # monthly TFSA savings funded from RRIF withdrawals (meltdown), today's CAD; 0 = off
 
 # Tax
 # (No user tax inputs: income tax is modeled automatically from the 2026
