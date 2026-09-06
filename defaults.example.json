@@ -1,0 +1,52 @@
+{
+  "shared": {
+    "annual_return_pct": 5.0,
+    "inflation_pct": 2.25,
+    "volatility_pct": 5.0,
+    "escalation_pct": 0.0
+  },
+  "people": {
+    "me": {
+      "current_age": 55,
+      "retirement_age": 65,
+      "end_age": 90,
+      "rrsp_balance": 250000,
+      "rrsp_monthly": 600,
+      "tfsa_balance": 0,
+      "tfsa_monthly": 0,
+      "nonreg_balance": 0,
+      "nonreg_monthly": 0,
+      "target_monthly_income": 4000,
+      "end_income_ratio_pct": 65,
+      "qpp_pct": 85,
+      "qpp_start": 72,
+      "oas_monthly": 734.95,
+      "oas_start": 70,
+      "oas_clawback": true,
+      "convert_at_retirement": true,
+      "rrif_conv_age": 71,
+      "monthly_meltdown": 0
+    },
+    "spouse": {
+      "current_age": 55,
+      "retirement_age": 65,
+      "end_age": 90,
+      "rrsp_balance": 250000,
+      "rrsp_monthly": 600,
+      "tfsa_balance": 0,
+      "tfsa_monthly": 0,
+      "nonreg_balance": 0,
+      "nonreg_monthly": 0,
+      "target_monthly_income": 4000,
+      "end_income_ratio_pct": 65,
+      "qpp_pct": 85,
+      "qpp_start": 72,
+      "oas_monthly": 734.95,
+      "oas_start": 70,
+      "oas_clawback": true,
+      "convert_at_retirement": true,
+      "rrif_conv_age": 71,
+      "monthly_meltdown": 0
+    }
+  }
+}

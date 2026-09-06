@@ -38,7 +38,7 @@ import random
 from dataclasses import dataclass
 from datetime import date
 
-from constants import (
+from defaults import (
     DEFAULT_ANNUAL_RETURN,
     DEFAULT_CONTRIBUTION_ESCALATION,
     DEFAULT_CURRENT_AGE,
@@ -62,6 +62,8 @@ from constants import (
     DEFAULT_TFSA_BALANCE,
     DEFAULT_TFSA_MONTHLY,
     DEFAULT_VOLATILITY,
+)
+from constants import (
     RRIF_CONVERSION_AGE,
     RRIF_CONVERSION_MIN_AGE,
     OAS_MAX_2025,

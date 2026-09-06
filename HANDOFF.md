@@ -29,14 +29,17 @@ Dependencies: `requirements.txt` (streamlit, plotly) and
 
 | File | Role |
 | --- | --- |
-| `app.py` | Streamlit UI: sidebar inputs + an "editing plan" selector, three tabs (Your plan / Spouse's plan / Combined). Each plan tab shows the 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, download buttons. Per-person inputs use unique widget keys (`{person}__field`) so both people's numbers persist; shared assumptions are entered once. The Combined tab is `household.py` output. No tax inputs — the tax section is an informational caption. |
-| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `rrif_conversion_age()` (resolves the RRSP→RRIF conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns a 12-tuple including tax paid, OAS clawback, RRIF minimum, marginal/effective rates, meltdown gross), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). Single-person only — unchanged by the household feature. |
+| `app.py` | Streamlit UI: sidebar inputs + an "editing plan" selector + a "Save plan as new defaults" button, three tabs (Your plan / Spouse's plan / Combined). Each plan tab shows the 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, download buttons. Per-person inputs use unique widget keys (`{person}__field`) so both people's numbers persist; shared assumptions are entered once. The Combined tab is `household.py` output. Input values start from `defaults.load_plan()` and Save writes `defaults.save_plan()`. No tax inputs — the tax section is an informational caption. |
+| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `rrif_conversion_age()` (resolves the RRSP→RRIF conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns a 12-tuple including tax paid, OAS clawback, RRIF minimum, marginal/effective rates, meltdown gross), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). Single-person only — unchanged by the household/persistence features. Engine `PlanInputs` field defaults come from `defaults.py`. |
 | `household.py` | Pure (stdlib) two-person combination of two independent plan results. `household_projection()` merges the two deterministic projections on a common calendar-year axis and sums balances/pension income/withdrawals/tax/income target; past a person's end age their balances carry forward at the last modeled value while they contribute no further income. `household_montecarlo()` sums the two plans' independent P5/P50/P95 bands (indicative, not a joint simulation). `total_series()`, `first_shortfall_year()` helpers. |
+| `defaults.py` | Pure (stdlib). Owns the built-in engine `DEFAULT_*` input values (formerly in `constants.py`) and the app's saved-plan persistence: `factory_shared()/factory_person()/factory_plan()` (display units), `load_plan()` (reads `plan_defaults.json`, seeds it from `defaults.example.json` on first run, self-heals corrupt content), `save_plan()`, `plan_fields_complete()`, `SHARED_FIELDS`/`PERSON_FIELDS`, atomic JSON write. Engine defaults are stable; only the app's shown inputs follow a saved plan. |
 | `tax.py` | The income tax model (pure, stdlib): `scale()` (base-year → year indexation), `federal_bracket_tax()` / `quebec_bracket_tax()`, `federal_credits()` / `quebec_credits()` (basic personal, age 65+, pension-income; phase-outs), `income_tax()` (returns fed/QC payable after credits and the Quebec abatement), `oas_recovery()` (clawback), `marginal_burden_rate()` (numeric marginal of income tax + recovery), `eligible_pension_income()` (RRIF payments only, from the conversion age). Single-taxpayer only — unchanged by the household feature. |
-| `constants.py` | Statutory constants with cited sources: RRIF minimum factors, QPP/OAS adjustment rules, 2025 pension maxima, 2026 federal/Quebec tax brackets, credits and phase-outs, planning defaults. |
+| `constants.py` | Statutory constants only, with cited sources: RRIF minimum factors, QPP/OAS adjustment rules, 2025 pension maxima, 2026 federal/Quebec tax brackets, credits and phase-outs. (The user-adjustable planning `DEFAULT_*` inputs moved to `defaults.py`.) |
 | `export.py` | `projection_csv()`, `summary_csv()`, `montecarlo_csv()`, `zip_bytes()`, plus `household_projection_csv()`. Raw numeric cells (2 decimals, no thousands separators) so Google Sheets imports them as numbers. |
-| `tests/` | `test_tax.py` (17 tests: brackets, credits/phase-outs, abatement, recovery, marginal rate, indexation), `test_projection.py` (model math, tax/clawback columns, exhaustion, validation, end-to-end), `test_household.py` (identical plans double columns; differing horizons align by calendar year with balance carry-forward; shortfall; MC sums), `test_export.py` (CSV layout/values, shortfall rows, zip contents, household CSV). |
-| `README.md` | User setup, Google Sheets import steps, model explanation, sources. |
+| `tests/` | `test_tax.py` (17 tests: brackets, credits/phase-outs, abatement, recovery, marginal rate, indexation), `test_projection.py` (model math, tax/clawback columns, exhaustion, validation, end-to-end), `test_household.py` (identical plans double columns; differing horizons align by calendar year with balance carry-forward; shortfall; MC sums), `test_defaults.py` (engine defaults still seed `PlanInputs`; factory plan; load/save round-trip; auto-seed from example; corrupt-file self-heal; string coercion), `test_export.py` (CSV layout/values, shortfall rows, zip contents, household CSV). |
+| `defaults.example.json` | Committed seed defaults for the app inputs (== `defaults.factory_plan()`), used on first run. |
+| `plan_defaults.json` | Git-ignored personal defaults, written by the "Save plan as new defaults" button and read on startup. |
+| `README.md` | User setup, Google Sheets import steps, model explanation, defaults & save, sources. |
 | `conftest.py` | Empty; makes project root importable for pytest. |
 
 ## The model (what `step_year` does each year)
@@ -151,8 +154,9 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   marital-status input). "Family income" is proxied by the taxpayer's own
   taxable income.
 - Defaults: return 5%, inflation 2.25%, volatility 5%, escalation 0%, income
-  at end age 65% (linear decline), monthly meltdown $500/mo, target monthly
-  income $5,000, 1,000 sims, seed 42. No tax default — tax is automatic.
+  at end age 65% (linear decline), monthly meltdown $0 (off), target monthly
+  income $4,000, RRSP monthly contribution $600, ages 55/65/90, RRSP $250k,
+  1,000 sims, seed 42. No tax default — tax is automatic.
 
 ## Locked-in decisions (do not silently change without asking)
 
@@ -166,7 +170,7 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   `monthly_meltdown` (today's CAD/month, inflation-indexed) funds a TFSA
   deposit from RRIF withdrawals in retirement years with `age < qpp_start_age`
   only; the RRIF withdrawal is grossed up for tax so the full target lands in
-  the TFSA; default $500/mo (0 = off).
+  the TFSA; default $0 (off).
 - **Quebec-specific**: QPP, OAS, RRSP/TFSA/RRIF terminology;
   bilingual labels, English primary.
 - **Automatic progressive income tax** (no tax inputs): 2026 federal + Quebec
@@ -197,23 +201,33 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   + Session State" warning), and re-seeded from the dicts via
   `_ensure_widget_key()` right before rendering. This is why switching the
   "Editing plan inputs" selector never loses either person's numbers.
+- **Persistence via "Save plan as new defaults"**: default *inputs* are no
+  longer in `constants.py`. `defaults.py` holds the engine `DEFAULT_*` values
+  (stable; used by `PlanInputs`/tests) and the app's default plan is loaded
+  from `plan_defaults.json` (git-ignored), seeded on first run from the
+  committed `defaults.example.json`. The Save button writes the current
+  authoritative inputs there; it is disabled while either plan is invalid.
+  Engine defaults deliberately do NOT change when the user saves — only the
+  app's starting inputs do, which keeps the math tests deterministic.
 
 ## Verification status
 
-- 64/64 pytest tests passing (17 tax unit tests + projection/household/export
-  tests; includes
+- 73/73 pytest tests passing (17 tax unit tests + projection/household/
+  defaults/export tests; includes
   exact bracket/credit/abatement math, the TP-1.D.B-V line-361 phase-out,
   exhaustion-year, RRIF-minimum (incl. early conversion), monthly meltdown
   (TFSA reinvestment, stop-at-QPP, clamping, indexing), linear
-  income-decline, tax/clawback columns, MC seed reproducibility).
-- New `test_household.py` (identical plans double each column; differing
-  horizons align by calendar year with balance carry-forward past a person's
-  end age; combined shortfall year; household MC sums; `total_series`) and a
-  household-CSV export test. Total suite: **64 passing**.
-- Streamlit `AppTest` smoke test: default run, widget change (QPP start 70),
-  invalid-input path, plus switching the "Editing plan inputs" selector and
-  changing one spouse's RRSP balance (the other person's plan is unaffected) —
-  no exceptions, no "Session State" widget warnings.
+  income-decline, tax/clawback columns, MC seed reproducibility, defaults
+  persistence).
+- `test_defaults.py` verifies engine defaults still seed `PlanInputs`, the
+  factory plan matches the committed example seed, load/save round-trips,
+  first-run auto-seed from the example, corrupt-file self-heal, and string
+  value coercion. Total suite: **73 passing**.
+- Streamlit `AppTest` smoke test: default run (auto-creates `plan_defaults.json`),
+  editing-person switching (the other person's plan is unaffected), and a
+  save→fresh-session flow (Saved plan's current age/spouse age/annual return
+  load as the defaults in a new session) — no exceptions, no "Session State"
+  widget warnings.
 - Real server boot: HTTP 200, `/_stcore/health` → `ok`.
 - Behavioral sanity confirmed: ~$550/mo monthly meltdown on the defaults
   removes the effective-rate jump at QPP start (18.55% → ~15.6% at 72, RRIF

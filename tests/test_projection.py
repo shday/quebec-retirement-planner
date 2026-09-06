@@ -608,10 +608,13 @@ def test_monthly_meltdown_clamped_by_balance():
 
 
 def test_monthly_meltdown_headline_scenario():
-    # The default scenario's jump at QPP start (eff 15.89% @71 -> 18.55% @72)
-    # disappears once the RRIF is small enough that the minimum stops binding.
-    base = compute_all(PlanInputs(monthly_meltdown=0.0, target_monthly_income=4_750))
-    melt = compute_all(PlanInputs(monthly_meltdown=550, target_monthly_income=4_750))
+    # Regression scenario: the effective-rate jump at QPP start disappears once
+    # the RRIF is small enough that the mandatory minimum stops binding. Pinned
+    # to an explicit scenario so it does not depend on the (user-tunable) app
+    # default inputs.
+    scen = dict(current_age=58, retirement_age=59, end_age=88, rrsp_balance=1_000_000)
+    base = compute_all(PlanInputs(monthly_meltdown=0.0, target_monthly_income=4_750, **scen))
+    melt = compute_all(PlanInputs(monthly_meltdown=550, target_monthly_income=4_750, **scen))
     b72 = next(r for r in base["projection"] if r["age"] == 72)
     m72 = next(r for r in melt["projection"] if r["age"] == 72)
     assert b72["effective_rate"] > 0.17  # sanity: the base scenario really jumps
@@ -650,7 +653,10 @@ def test_no_withdrawal_jump_when_rrsp_depletes_with_meltdown():
     # the TFSA. Previously the netting was skipped that year, so the whole need
     # came from the TFSA on top of the pensions - a sudden ~69k withdrawal at
     # age 80 pushing income far above target.
-    p = PlanInputs(annual_return=0.03, monthly_meltdown=500, target_monthly_income=4_750)
+    p = PlanInputs(
+        current_age=58, retirement_age=59, end_age=88, rrsp_balance=1_000_000,
+        annual_return=0.03, monthly_meltdown=500, target_monthly_income=4_750,
+    )
     rows = deterministic_projection(p)
     by_age = {r["age"]: r for r in rows}
     # The RRSP is gone by 80.

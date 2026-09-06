@@ -16,6 +16,10 @@ and download CSVs to import into **Google Sheets** manually.
   meltdown and target income stay independent. Three tabs show your plan, the
   spouse's plan, and a **Combined** household view that adds the two plans
   together on a common calendar-year axis.
+- **Save plan as new defaults**: a sidebar button persists the current inputs
+  (shared assumptions and both people) to a local `plan_defaults.json`; the
+  next session opens from them. Defaults are seeded from a committed
+  `defaults.example.json`.
 - **No Google API, no OAuth, no accounts** — everything runs locally; the CSVs
   are yours to upload wherever you like.
 
@@ -113,6 +117,23 @@ Both plans are each modeled and taxed as a **single taxpayer** (see the
 simplifications below), so the Combined tab is an additive household estimate,
 not a joint income-tax model.
 
+## Defaults & Save
+
+The app opens with a default plan (shared assumptions + both people's inputs).
+These default *inputs* no longer live in `constants.py` (which now holds only
+statutory values). They live in the defaults module plus JSON data files:
+
+- `defaults.py` — the model's built-in engine defaults and the load/save logic.
+- `defaults.example.json` — committed seed with today's built-in values.
+- `plan_defaults.json` — **git-ignored**; created on first run by copying the
+  example seed, then overwritten by the sidebar's **💾 Save plan as new
+  defaults** button.
+
+Use the sidebar **Save plan as new defaults** button (disabled while either
+plan is invalid) to persist the current inputs. The next session opens from
+those values. To go back to the factory numbers, delete `plan_defaults.json`
+(or copy `defaults.example.json` over it) and restart the app.
+
 ## Projection columns
 
 `projection.csv` (and the app's projection table) has one row per year:
@@ -137,12 +158,12 @@ not a joint income-tax model.
 
 | Input | Default | Source |
 | --- | --- | --- |
-| Target monthly income at retirement | $5,000 | Your own lifestyle estimate |
+| Target monthly income at retirement | $4,000 | Your own lifestyle estimate |
 | Income at end age (% of retirement) | 65% (linear decline) | Your own assumption |
 | QPP at 65 | 85% of maximum (≈$1,185.96/mo, 2025 max $1,395.25) | [Retraite Québec — your statement pension ÷ the maximum](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
 | OAS monthly at 65 | $734.95 (2025 max, 65–74; $808.45 at 75+) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
 | RRSP → RRIF conversion age | At retirement (deadline 71) | Your own plan (early conversion earns the pension-income credits sooner) |
-| Monthly meltdown | $500/mo | Optional: save into the TFSA before QPP starts (funded by grossed-up RRIF withdrawals) |
+| Monthly meltdown | $0 (off) | Optional: save into the TFSA before QPP starts (funded by grossed-up RRIF withdrawals) |
 | Income tax | Automatic (no inputs) | 2026 federal + Quebec brackets/credits, indexed to inflation |
 | Return / inflation / volatility | 5% / 2.25% / 5% | Your own assumptions |
 
@@ -202,13 +223,16 @@ OAS can start at 65 or be deferred to 70 for **+36%**, and gets an automatic
 ## Project layout
 
 ```
-app.py            Streamlit UI (sidebar inputs, three tabs: two people + combined)
+app.py            Streamlit UI (sidebar inputs + Save, three tabs: two people + combined)
 projection.py     Deterministic model + seeded Monte Carlo (pure, testable)
 household.py      Household (two-person) combination of two independent plans
+defaults.py       Built-in engine defaults + saved-plan load/save (JSON)
 tax.py            Progressive federal + Quebec income tax model (pure, testable)
 export.py         Projection → CSV strings / zip bytes
-constants.py      Statutory constants (RRIF minimums, QPP/OAS factors, tax 2026, defaults)
-tests/            pytest suite (tax, model, household, export)
+constants.py      Statutory constants only (RRIF minimums, QPP/OAS factors, tax 2026)
+defaults.example.json   Committed seed defaults for the app inputs
+plan_defaults.json      Git-ignored personal defaults (written by "Save plan")
+tests/            pytest suite (tax, model, household, defaults, export)
 ```
 
 ## Running the tests

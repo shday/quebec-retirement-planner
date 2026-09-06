@@ -5,3 +5,6 @@ __pycache__/
 .DS_Store
 .hotreload_test/
 .srvprobe/
+
+# Saved-plan defaults (personal; seeded from defaults.example.json)
+plan_defaults.json

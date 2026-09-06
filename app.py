@@ -23,6 +23,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 import constants as C
+import defaults as D
 import export
 import household as HH
 from projection import (
@@ -47,39 +48,8 @@ st.caption(
 PERSON_LABEL = {"me": "Your plan", "spouse": "Spouse's plan"}
 
 # ---------------------------------------------------------------------------
-# Input defaults (used to seed per-person session state and widget defaults)
+# Authoritative session state (per-person / shared), seeded from the saved plan
 # ---------------------------------------------------------------------------
-DEFAULT_SHARED = {
-    "annual_return_pct": C.DEFAULT_ANNUAL_RETURN * 100.0,   # 5.0
-    "inflation_pct": C.DEFAULT_INFLATION * 100.0,           # 2.25
-    "volatility_pct": C.DEFAULT_VOLATILITY * 100.0,         # 5.0
-    "escalation_pct": C.DEFAULT_CONTRIBUTION_ESCALATION * 100.0,  # 0.0
-}
-
-DEFAULT_PERSON = {
-    "current_age": C.DEFAULT_CURRENT_AGE,
-    "retirement_age": C.DEFAULT_RETIREMENT_AGE,
-    "end_age": C.DEFAULT_END_AGE,
-    "rrsp_balance": C.DEFAULT_RRSP_BALANCE,
-    "rrsp_monthly": C.DEFAULT_RRSP_MONTHLY,
-    "tfsa_balance": C.DEFAULT_TFSA_BALANCE,
-    "tfsa_monthly": C.DEFAULT_TFSA_MONTHLY,
-    "nonreg_balance": C.DEFAULT_NONREG_BALANCE,
-    "nonreg_monthly": C.DEFAULT_NONREG_MONTHLY,
-    "target_monthly_income": C.DEFAULT_TARGET_MONTHLY_INCOME,
-    # stored as a whole percent (0-100) for the slider widget
-    "end_income_ratio_pct": int(C.DEFAULT_END_INCOME_RATIO * 100.0),  # 65
-    "qpp_pct": int(C.DEFAULT_QPP_PCT_OF_MAX * 100.0),                  # 85
-    "qpp_start": C.DEFAULT_QPP_START_AGE,                              # 72
-    "oas_monthly": C.OAS_MAX_2025,
-    "oas_start": C.DEFAULT_OAS_START_AGE,                              # 70
-    "oas_clawback": C.DEFAULT_OAS_CLAWBACK,                            # True
-    "convert_at_retirement": C.DEFAULT_RRIF_CONVERSION_AGE is None,    # True
-    "rrif_conv_age": C.RRIF_CONVERSION_AGE,                            # 71
-    "monthly_meltdown": C.DEFAULT_MONTHLY_MELTDOWN,                    # 500
-}
-
-
 def _init_state() -> None:
     """Seed authoritative per-person / shared input dicts.
 
@@ -88,12 +58,17 @@ def _init_state() -> None:
     other person's inputs while you edit this one), so widget keys cannot be
     the source of truth. The authoritative values live in these dicts, which
     Streamlit never prunes; widget keys are re-seeded from them on demand.
+
+    The starting values come from the saved plan (``defaults.plan_defaults.json``,
+    seeded from the committed ``defaults.example.json``), so a previously saved
+    plan becomes the default for the next session.
     """
     ss = st.session_state
+    plan = D.load_plan()
     if "people_inputs" not in ss:
-        ss["people_inputs"] = {pid: dict(DEFAULT_PERSON) for pid in ("me", "spouse")}
+        ss["people_inputs"] = {pid: dict(plan["people"][pid]) for pid in ("me", "spouse")}
     if "shared_inputs" not in ss:
-        ss["shared_inputs"] = dict(DEFAULT_SHARED)
+        ss["shared_inputs"] = dict(plan["shared"])
 
 
 def _person(pid: str) -> dict:
@@ -117,14 +92,14 @@ def _ensure_widget_key(key: str, value) -> None:
 
 def _sync_person(pid: str) -> None:
     """Copy the just-rendered widget values back into the authoritative dict."""
-    for f in DEFAULT_PERSON:
+    for f in D.PERSON_FIELDS:
         k = f"{pid}__{f}"
         if k in st.session_state:
             _person(pid)[f] = st.session_state[k]
 
 
 def _sync_shared() -> None:
-    for f in DEFAULT_SHARED:
+    for f in D.SHARED_FIELDS:
         k = f"shared__{f}"
         if k in st.session_state:
             _shared()[f] = st.session_state[k]
@@ -266,6 +241,29 @@ def compute(inp: PlanInputs) -> dict:
     return build_result(inp, deterministic_projection(inp), monte_carlo(inp))
 
 
+def _save_plan_button() -> None:
+    """'Save plan as new defaults' control (writes ``plan_defaults.json``)."""
+    invalid = [pid for pid in ("me", "spouse") if validate(_plan_inputs(pid))]
+    if invalid:
+        st.caption("Fix the invalid plan(s) before saving.")
+    if st.button(
+        "💾 Save plan as new defaults",
+        disabled=bool(invalid),
+        help="Persist the current inputs (shared assumptions and both people) as the app's "
+             "defaults. They load automatically on the next session.",
+    ):
+        data = {
+            "shared": dict(_shared()),
+            "people": {pid: dict(_person(pid)) for pid in ("me", "spouse")},
+        }
+        try:
+            D.save_plan(data)
+        except OSError as exc:
+            st.error(f"Could not save the plan: {exc}")
+        else:
+            st.success("Saved. These inputs will open as the defaults on your next session.")
+
+
 _init_state()
 
 with st.sidebar:
@@ -294,7 +292,10 @@ with st.sidebar:
         "inflation — each taxed as a single taxpayer. No tax inputs needed."
     )
     st.header("🎲 Monte Carlo")
-    st.caption(f"{C.DEFAULT_MONTE_CARLO_SIMS} simulations per plan, fixed seed {C.DEFAULT_SEED}.")
+    st.caption(f"{D.DEFAULT_MONTE_CARLO_SIMS} simulations per plan, fixed seed {D.DEFAULT_SEED}.")
+
+    st.divider()
+    _save_plan_button()
 
 
 # ---------------------------------------------------------------------------
