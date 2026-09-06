@@ -2,7 +2,8 @@
 
 A local web app for **Quebec** retirement planning. Enter your numbers in the
 sidebar, review a year-by-year projection (deterministic + Monte Carlo range),
-and download CSVs to import into **Google Sheets** manually.
+and download plain CSVs to open in any spreadsheet (e.g. Excel, Numbers, Google
+Sheets).
 
 - Accounts: **RRSP**, **TFSA**, non-registered
 - Pensions: **QPP**, **OAS** — with statutory start-age adjustments
@@ -16,12 +17,14 @@ and download CSVs to import into **Google Sheets** manually.
   meltdown and target income stay independent. Three tabs show your plan, the
   spouse's plan, and a **Combined** household view that adds the two plans
   together on a common calendar-year axis.
-- **Save plan as new defaults**: a sidebar button persists the current inputs
-  (shared assumptions and both people) to a local `plan_defaults.json`; the
-  next session opens from them. Defaults are seeded from a committed
+- **Save plan as new defaults** (local mode): a sidebar button persists the
+  current inputs (shared assumptions and both people) to a local
+  `plan_defaults.json`; the next session opens from them. On **Streamlit
+  Community Cloud** this becomes **Download / Load my plan** as a JSON file (see
+  [Defaults & Save](#defaults--save)). Defaults are seeded from a committed
   `defaults.example.json`.
-- **No Google API, no OAuth, no accounts** — everything runs locally; the CSVs
-  are yours to upload wherever you like.
+- **No external APIs, no OAuth, no accounts** — everything runs locally; the CSVs
+  are yours to open or upload wherever you like.
 
 > Informational planning estimates only — **not financial advice**.
 
@@ -36,14 +39,14 @@ streamlit run app.py
 
 Your browser opens `http://localhost:8501`.
 
-## Importing into Google Sheets
+## Importing the CSVs
 
 1. Click **Download projection.csv** (and optionally `summary.csv` and
    `montecarlo.csv`, or the combined `.zip`).
-2. In Google Sheets: **File → Import → Upload** → select the CSV →
-   **Insert new sheet(s)**. Each file becomes its own tab.
+2. Open each file in any spreadsheet app, or import it — e.g. in Google Sheets
+   use **File → Import → Upload** → **Insert new sheet(s)**, one file per tab.
 3. Numeric cells are detected automatically (raw numbers, no `$`). Optional:
-   select balance columns → **Format → Number → Currency**.
+   select balance columns → format as currency.
 
 ## What the model does
 
@@ -129,12 +132,53 @@ statutory values). They live in the defaults module plus JSON data files:
 - `defaults.example.json` — committed seed with today's built-in values.
 - `plan_defaults.json` — **git-ignored**; created on first run by copying the
   example seed, then overwritten by the sidebar's **💾 Save plan as new
-  defaults** button.
+  defaults** button (local mode only).
 
-Use the sidebar **Save plan as new defaults** button (disabled while either
-plan is invalid) to persist the current inputs. The next session opens from
-those values. To go back to the factory numbers, delete `plan_defaults.json`
-(or copy `defaults.example.json` over it) and restart the app.
+How persistence behaves depends on the runtime, switched by the
+`STREAMLIT_CLOUD` environment variable (`deploy.py`):
+
+**Local mode** (the default; no env var set): the sidebar **💾 Save plan as new
+defaults** button (disabled while either plan is invalid) persists the current
+inputs to `plan_defaults.json`, and the next session opens from those values. To
+go back to the factory numbers, delete `plan_defaults.json` (or copy
+`defaults.example.json` over it) and restart the app.
+
+**Cloud mode** (`STREAMLIT_CLOUD=true`, e.g. Streamlit Community Cloud): the
+container filesystem is **ephemeral** — it is wiped on every restart and shared
+by concurrent sessions — so nothing is ever read from or written to
+`plan_defaults.json`. Each session starts from the committed
+`defaults.example.json`, and the sidebar instead offers **💾 Download my plan**
+(saves `retirement-plan.json`) and **📂 Load a saved plan** (uploads that file
+back to replace the current inputs in this session). The JSON schema is
+identical in both modes, so a file downloaded on the Cloud can also be dropped
+in as a local `plan_defaults.json` (and vice-versa).
+
+## Running / deploying on Streamlit Community Cloud
+
+Community Cloud provides no reliable built-in way for the app to detect that it
+is deployed there, so the app uses an explicit opt-in marker:
+
+1. Push this repo to GitHub (ensure `defaults.example.json` is committed;
+   `plan_defaults.json` stays git-ignored).
+2. In Community Cloud: **Deploy a new app** → choose the repo → main file
+   `app.py` → Python dependencies from `requirements.txt`.
+3. Under the deployed app's **Settings → Secrets**, add the environment
+   variable `STREAMLIT_CLOUD=true`. This puts the app in Cloud mode (Download /
+   Load plan as JSON). If you skip it, the app runs in local mode and "Save plan
+   as new defaults" would write an ephemeral file that silently disappears on
+   the next restart.
+
+To **exercise the Cloud branch locally** (no deploy needed), run:
+
+```bash
+STREAMLIT_CLOUD=true streamlit run app.py   # Cloud mode (Download / Load plan)
+streamlit run app.py                        # local mode (Save plan as new defaults)
+```
+
+Because the env var is only read at process start, fully restart `streamlit run`
+when toggling it (on-save hot-reload does not re-read `os.environ`). The two
+remaining Cloud-only behaviours — ephemeral restarts and multi-visitor isolation —
+can only be confirmed on a real deployed instance.
 
 ## Projection columns
 
@@ -228,16 +272,17 @@ OAS can start at 65 or be deferred to 70 for **+36%**, and gets an automatic
 ## Project layout
 
 ```
-app.py            Streamlit UI (sidebar inputs + Save, three tabs: two people + combined)
+app.py            Streamlit UI (sidebar inputs + Save/Download/Load, three tabs)
 projection.py     Deterministic model + seeded Monte Carlo (pure, testable)
 household.py      Household (two-person) combination of two independent plans
 defaults.py       Built-in engine defaults + saved-plan load/save (JSON)
+deploy.py         Runtime mode detection (STREAMLIT_CLOUD) for Cloud vs local
 tax.py            Progressive federal + Quebec income tax model (pure, testable)
 export.py         Projection → CSV strings / zip bytes
 constants.py      Statutory constants only (RRIF minimums, QPP/OAS factors, tax 2026)
 defaults.example.json   Committed seed defaults for the app inputs
-plan_defaults.json      Git-ignored personal defaults (written by "Save plan")
-tests/            pytest suite (tax, model, household, defaults, export)
+plan_defaults.json      Git-ignored personal defaults (written by "Save plan", local mode)
+tests/            pytest suite (tax, model, household, defaults, deploy, export)
 ```
 
 ## Running the tests

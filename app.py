@@ -6,8 +6,8 @@ Plan and model a couple's retirement here. Enter each person's numbers in the
 sidebar (shared assumptions are entered once and applied to both), review each
 person's deterministic and Monte Carlo projection on its own tab, and see a
 household "combined" tab that adds the two plans together by calendar year.
-Download CSVs to import into Google Sheets (File -> Import -> Upload, one tab
-per file).
+Download plain CSVs (one file per tab) to open in any spreadsheet or import
+elsewhere.
 
 The combined tab is an additive household picture: each plan is modeled and
 taxed independently as a single taxpayer (the app's documented approximation)
@@ -24,6 +24,7 @@ import plotly.graph_objects as go
 
 import constants as C
 import defaults as D
+import deploy as DEPLOY
 import export
 import household as HH
 from projection import (
@@ -39,13 +40,22 @@ st.set_page_config(page_title="Quebec Retirement Planner", page_icon="🍁", lay
 
 st.title("🍁 Quebec Retirement Planner")
 st.caption(
-    "QPP · OAS · RRSP · TFSA · RRIF — amounts in CAD. "
     "Two plans (yours and your spouse's) with a combined household view. "
-    "Informational estimates only, not financial advice. "
     "This app computes locally; nothing is uploaded anywhere."
+)
+st.caption(
+    ":orange[Not financial advice, experimental only — tax rules and figures are based on what was "
+    "available in Sept 2026. Several assumptions my differ from your specifc tax situation. "
+    "See the README for more info.]"
 )
 
 PERSON_LABEL = {"me": "Your plan", "spouse": "Spouse's plan"}
+
+# Cloud mode (Streamlit Community Cloud): read once at startup from
+# STREAMLIT_CLOUD=true. Persistence is local-first (Download/Load JSON) and the
+# container filesystem is never read/written for the saved plan. Local mode
+# keeps the original file-based "Save plan as new defaults" behaviour.
+IS_CLOUD = DEPLOY.is_streamlit_cloud()
 
 # ---------------------------------------------------------------------------
 # Authoritative session state (per-person / shared), seeded from the saved plan
@@ -59,12 +69,15 @@ def _init_state() -> None:
     the source of truth. The authoritative values live in these dicts, which
     Streamlit never prunes; widget keys are re-seeded from them on demand.
 
-    The starting values come from the saved plan (``defaults.plan_defaults.json``,
-    seeded from the committed ``defaults.example.json``), so a previously saved
-    plan becomes the default for the next session.
+    The starting values come from the app's saved plan. In local mode that is
+    ``defaults.plan_defaults.json`` (seeded from the committed
+    ``defaults.example.json``), so a previously saved plan becomes the default
+    for the next session. In Cloud mode the container filesystem is ephemeral,
+    so the session starts from the committed example only (``D.base_plan()``)
+    and the user downloads/uploads their plan via the sidebar controls instead.
     """
     ss = st.session_state
-    plan = D.load_plan()
+    plan = D.base_plan() if IS_CLOUD else D.load_plan()
     if "people_inputs" not in ss:
         ss["people_inputs"] = {pid: dict(plan["people"][pid]) for pid in ("me", "spouse")}
     if "shared_inputs" not in ss:
@@ -248,23 +261,88 @@ def compute(inp: PlanInputs) -> dict:
     return build_result(inp, deterministic_projection(inp), monte_carlo(inp))
 
 
+def _current_plan_data() -> dict:
+    """Assemble the current inputs as a plan dict in the shared JSON schema."""
+    return {
+        "shared": dict(_shared()),
+        "people": {pid: dict(_person(pid)) for pid in ("me", "spouse")},
+    }
+
+
+def _apply_loaded_plan(plan: dict) -> None:
+    """Make a loaded plan the current inputs, then rerun so widgets + tabs update.
+
+    Overwrites the authoritative dicts *and* every widget key (bypassing
+    ``_ensure_widget_key``'s "only if absent" behaviour) so the rerun renders
+    all sidebar widgets from the loaded values. ``plan`` must already be a
+    validated, complete plan (see ``D.parse_plan``).
+    """
+    ss = st.session_state
+    ss["people_inputs"] = {pid: dict(plan["people"][pid]) for pid in ("me", "spouse")}
+    ss["shared_inputs"] = dict(plan["shared"])
+    for pid in ("me", "spouse"):
+        for f in D.PERSON_FIELDS:
+            ss[f"{pid}__{f}"] = plan["people"][pid][f]
+    for f in D.SHARED_FIELDS:
+        ss[f"shared__{f}"] = plan["shared"][f]
+    st.rerun()
+
+
+def _on_plan_uploaded() -> None:
+    """file_uploader on_change: validate a JSON plan and apply it if usable."""
+    st.session_state.pop("plan_load_error", None)
+    f = st.session_state.get("plan_uploader")
+    if f is None:
+        return
+    try:
+        plan = D.parse_plan(f.getvalue().decode("utf-8"))
+    except Exception as exc:  # bad JSON / incomplete plan / decode error
+        st.session_state["plan_load_error"] = str(exc)
+        return
+    _apply_loaded_plan(plan)
+
+
+def _cloud_save_controls() -> None:
+    """Cloud-mode Save/Load: download current inputs, or upload a saved JSON."""
+    st.caption("Nothing is stored on the server. Download a copy of your plan, "
+               "then load it again on future visits.")
+    st.download_button(
+        "💾 Download my plan",
+        data=D.plan_to_json(_current_plan_data()),
+        file_name="retirement-plan.json",
+        mime="application/json",
+        help="Download the current inputs (shared assumptions and both people) as a JSON "
+             "file you can load again later — in the cloud or back in the local app.",
+    )
+    err_msg = st.session_state.pop("plan_load_error", None)
+    if err_msg:
+        st.error(f"Could not load plan: {err_msg}")
+    st.file_uploader(
+        "📂 Load a saved plan",
+        type=["json"],
+        key="plan_uploader",
+        on_change=_on_plan_uploaded,
+        help="Choose a plan JSON file (e.g. one you downloaded here). Its values replace "
+             "the current inputs in this session.",
+    )
+
+
 def _save_plan_button() -> None:
-    """'Save plan as new defaults' control (writes ``plan_defaults.json``)."""
+    """Save control. Cloud mode = download/load; local mode = write defaults file."""
     invalid = [pid for pid in ("me", "spouse") if validate(_plan_inputs(pid))]
     if invalid:
         st.caption("Fix the invalid plan(s) before saving.")
+    if IS_CLOUD:
+        _cloud_save_controls()
+        return
     if st.button(
         "💾 Save plan as new defaults",
         disabled=bool(invalid),
         help="Persist the current inputs (shared assumptions and both people) as the app's "
              "defaults. They load automatically on the next session.",
     ):
-        data = {
-            "shared": dict(_shared()),
-            "people": {pid: dict(_person(pid)) for pid in ("me", "spouse")},
-        }
         try:
-            D.save_plan(data)
+            D.save_plan(_current_plan_data())
         except OSError as exc:
             st.error(f"Could not save the plan: {exc}")
         else:
@@ -505,11 +583,11 @@ def render_plan_tab(pid: str, label: str, p: PlanInputs, result: dict) -> None:
         st.dataframe(key_rows, hide_index=True, width="stretch")
 
     st.divider()
-    st.subheader("💾 Download CSVs for Google Sheets")
+    st.subheader("💾 Download CSVs")
     st.info(
-        "In Google Sheets: **File → Import → Upload** → pick each CSV → "
-        "**Insert new sheet(s)**. Each file becomes its own tab and numeric cells "
-        "are detected automatically."
+        "Plain CSV files — open in any spreadsheet or import them (e.g. Google "
+        "Sheets: **File → Import → Upload** → **Insert new sheet(s)**). Each "
+        "file maps to one tab and numeric cells are detected automatically."
     )
     d1, d2, d3, d4 = st.columns(4)
     d1.download_button("Download projection.csv", export.projection_csv(result),
@@ -528,7 +606,7 @@ def render_plan_tab(pid: str, label: str, p: PlanInputs, result: dict) -> None:
 def render_combined(p_a: PlanInputs, res_a: dict, p_b: PlanInputs, res_b: dict) -> None:
     st.caption(
         "Household = **sum of the two plans**, each modeled and taxed as a "
-        "single taxpayer (the app's documented approximation). The Monte Carlo "
+        "single taxpayer (income splitting and other tax advantages are not modeled). The Monte Carlo "
         "band is the sum of the two independent runs, so it is indicative only. "
         "A person's balances carry forward at their last modeled value past "
         "their end age (their estate stays in the household)."

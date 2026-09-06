@@ -119,3 +119,68 @@ def test_committed_example_seed_matches_factory(tmp_path):
         pytest.skip("committed example seed not present")
     parsed = json.loads(seed.read_text())
     assert parsed == D.factory_plan()
+
+
+# ---------------------------------------------------------------------------
+# Cloud-mode pure helpers (plan_to_json / parse_plan / base_plan)
+# ---------------------------------------------------------------------------
+def test_plan_to_json_round_trips_via_parse_plan():
+    data = D.factory_plan()
+    data["shared"]["annual_return_pct"] = 6.5
+    data["people"]["me"]["current_age"] = 57
+    data["people"]["me"]["oas_clawback"] = False
+    text = D.plan_to_json(data)
+    assert text.endswith("\n")
+    assert D.parse_plan(text) == data
+
+
+def test_parse_plan_rejects_invalid_json():
+    with pytest.raises(ValueError, match="Not valid JSON"):
+        D.parse_plan("{ not valid json !!!")
+
+
+def test_parse_plan_rejects_incomplete_plan():
+    data = D.factory_plan()
+    del data["people"]["spouse"]
+    with pytest.raises(ValueError, match="complete saved plan"):
+        D.parse_plan(D.plan_to_json(data))
+    # A non-dict root is also not a complete plan.
+    with pytest.raises(ValueError, match="complete saved plan"):
+        D.parse_plan("[1, 2, 3]")
+
+
+def test_parse_plan_coerces_stringly_typed_values():
+    data = D.factory_plan()
+    data["shared"]["annual_return_pct"] = "6.0"
+    data["people"]["me"]["current_age"] = "62"
+    data["people"]["me"]["oas_clawback"] = "false"
+    parsed = D.parse_plan(D.plan_to_json(data))
+    assert parsed["shared"]["annual_return_pct"] == 6.0
+    assert parsed["people"]["me"]["current_age"] == 62
+    assert parsed["people"]["me"]["oas_clawback"] is False
+
+
+def test_base_plan_reads_seed_without_writing(tmp_path):
+    seed = tmp_path / "defaults.example.json"
+    plan_file = tmp_path / "plan_defaults.json"
+    D.write_seed(seed)
+    plan = D.base_plan(seed_path=seed)
+    assert plan == D.factory_plan()
+    assert not plan_file.exists()  # never materializes a personal plan file
+
+
+def test_base_plan_falls_back_to_factory_when_no_seed(tmp_path):
+    missing = tmp_path / "no_such.json"
+    assert D.base_plan(seed_path=missing) == D.factory_plan()
+
+
+def test_base_plan_ignores_existing_personal_file(tmp_path):
+    # Cloud sessions must never pick up a stale plan_defaults.json.
+    seed = tmp_path / "defaults.example.json"
+    D.write_seed(seed)
+    plan = D.base_plan(seed_path=seed)
+    plan["people"]["me"]["current_age"] = 99  # a stale personal file holds 99
+    stale = tmp_path / "plan_defaults.json"
+    D.save_plan(plan, plan_path=stale)
+    # base_plan ignores the personal file entirely and returns the seed values.
+    assert D.base_plan(seed_path=seed)["people"]["me"]["current_age"] == 55

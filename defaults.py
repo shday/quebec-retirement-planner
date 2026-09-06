@@ -10,14 +10,21 @@ Owns two things:
    NOT change when the user saves a plan.
 
 2. **The app's default plan (saved state).** A single household plan of input
-   values the app opens with. It lives in a local JSON file
+   values the app opens with. In **local mode** it lives in a local JSON file
    (``plan_defaults.json``, git-ignored) that is seeded on first run from a
    committed example (``defaults.example.json``). The **Save plan** control in
    the app writes the current inputs back to ``plan_defaults.json``; the next
-   session starts from them. The plan uses the app's "display units" schema
-   (see ``SHARED_FIELDS`` / ``PERSON_FIELDS``).
+   session starts from them. In **Cloud mode** (Streamlit Community Cloud) the
+   container filesystem is ephemeral, so no file is read or written: each
+   session starts from the committed example (``base_plan()``) and the app
+   instead downloads/uploads the plan as a JSON file through its own controls.
+   The plan uses the app's "display units" schema (see ``SHARED_FIELDS`` /
+   ``PERSON_FIELDS``); the schema is identical in both modes.
 
-Everything here is pure stdlib (no Streamlit), so it is unit-testable.
+The file-based load/save functions (``load_plan`` / ``save_plan`` / ``write_seed``)
+stay local-mode-and-test oriented (pure stdlib, no Streamlit). The helpers the
+app uses for Cloud mode (``plan_to_json`` / ``parse_plan`` / ``base_plan``) are
+also pure and have no filesystem side effects.
 """
 
 from __future__ import annotations
@@ -278,9 +285,60 @@ def load_plan(plan_path: Path | str | None = None, seed_path: Path | str | None 
 
 
 def save_plan(data: dict, plan_path: Path | str | None = None) -> None:
-    """Persist a plan dict as the app's defaults."""
+    """Persist a plan dict as the app's defaults (local mode)."""
     pp = Path(plan_path) if plan_path is not None else PLAN_PATH
     _write_json(pp, data)
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers used by the app's Cloud-mode controls (no filesystem I/O)
+# ---------------------------------------------------------------------------
+def plan_to_json(data: dict) -> str:
+    """Serialize a plan dict exactly as it would be written to disk.
+
+    Matches ``_write_json``'s formatting so a downloaded file is byte-for-byte
+    compatible with a locally saved ``plan_defaults.json``.
+    """
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+def parse_plan(text: str) -> dict:
+    """Parse + validate a plan JSON string (e.g. from an uploaded file).
+
+    Coerces hand-typed stringly-typed values (via ``_coerce``) and requires a
+    complete plan (both people plus every shared field). Raises ``ValueError``
+    with a human message when the content is not a usable saved plan, so a bad
+    upload can be rejected instead of silently replacing the current inputs.
+    """
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Not valid JSON: {exc.msg}") from exc
+    data = _coerce(raw) if isinstance(raw, dict) else {}
+    if not plan_fields_complete(data):
+        raise ValueError(
+            "Not a complete saved plan (must include shared assumptions and both people)."
+        )
+    return data
+
+
+def base_plan(seed_path: Path | str | None = None) -> dict:
+    """Read-only starting plan for Cloud sessions.
+
+    Returns the committed example (``defaults.example.json``) coerced and
+    validated, falling back to the factory plan. Never reads the personal
+    ``plan_defaults.json`` and never writes to disk, so Cloud sessions always
+    start from a clean, known seed regardless of what a previous session left
+    in the ephemeral container.
+    """
+    sp = Path(seed_path) if seed_path is not None else SEED_PATH
+    if sp.exists():
+        data = _read_json(sp)
+        if data is not None:
+            data = _coerce(data)
+            if plan_fields_complete(data):
+                return data
+    return factory_plan()
 
 
 def write_seed(path: Path | str | None = None) -> None:
