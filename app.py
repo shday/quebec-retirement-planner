@@ -38,7 +38,7 @@ from projection import (
 
 st.set_page_config(page_title="Quebec Retirement Planner", page_icon="🍁", layout="wide")
 
-st.title("🍁 Quebec Retirement Planner")
+st.title("🍁 Quebec Retirement Planner (experimental)")
 st.caption(
     "Two plans (yours and your spouse's) with a combined household view. "
     "This app computes locally; nothing is uploaded anywhere."
