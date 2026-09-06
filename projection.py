@@ -20,9 +20,9 @@ The model is deliberately simple and transparent:
   gross-up is solved against the real tax function (brackets, basic personal,
   age 65+ and pension-income credits, the Quebec abatement, and the OAS
   recovery tax), indexed to inflation from 2026.
-- Retirement income needs decline linearly from 100% at the retirement age to
-  a configurable percentage at the end age (in today's dollars), with
-  inflation applied on top.
+- Retirement income needs decline along a sigmoidal (S-shaped) curve from the
+  retirement age, settling toward a configurable floor at the end age (in
+  today's dollars), with inflation applied on top.
 - Monte Carlo samples annual lognormal returns around the expected return and
   volatility, with a fixed seed for reproducibility.
 
@@ -44,6 +44,7 @@ from defaults import (
     DEFAULT_CURRENT_AGE,
     DEFAULT_END_AGE,
     DEFAULT_END_INCOME_RATIO,
+    DEFAULT_INCOME_STEEPNESS,
     DEFAULT_MONTHLY_MELTDOWN,
     DEFAULT_RRIF_CONVERSION_AGE,
     DEFAULT_INFLATION,
@@ -117,7 +118,8 @@ class PlanInputs:
 
     # Retirement income
     target_monthly_income: float = DEFAULT_TARGET_MONTHLY_INCOME   # today's dollars
-    end_income_ratio: float = DEFAULT_END_INCOME_RATIO             # income at end age, fraction of retirement income
+    end_income_ratio: float = DEFAULT_END_INCOME_RATIO             # income the target settles toward at end age, fraction of retirement income
+    steepness: float = DEFAULT_INCOME_STEEPNESS                    # how S-shaped the retirement income decline is
     qpp_monthly_at_65: float = QPP_MAX_AT_65_2025 * DEFAULT_QPP_PCT_OF_MAX  # user's age-65 estimate (default 85% of the maximum)
     qpp_start_age: int = DEFAULT_QPP_START_AGE
     oas_monthly: float = OAS_MAX_2025                              # today's dollars, at 65
@@ -169,6 +171,8 @@ def validate(p: PlanInputs) -> list[str]:
             errs.append(f"{label} must be between 0% and 100%.")
     if not 0 <= p.end_income_ratio <= 1:
         errs.append("Income at end age must be between 0% and 100% of retirement income.")
+    if p.steepness < 0:
+        errs.append("Income decline steepness cannot be negative.")
     if not QPP_MIN_START_AGE <= p.qpp_start_age <= QPP_MAX_START_AGE:
         errs.append(f"QPP start age must be between {QPP_MIN_START_AGE} and {QPP_MAX_START_AGE}.")
     if p.oas_start_age not in (65, OAS_DEFERRAL_MAX_AGE):
@@ -213,14 +217,24 @@ def oas_adjustment(start_age: int) -> float:
 def income_fraction(p: PlanInputs, age: int) -> float:
     """Fraction of the retirement income target for a given age.
 
-    Declines linearly from 1.0 at the retirement age down to end_income_ratio
-    at the end age (both in today's, pre-inflation dollars).
+    The target follows a sigmoidal (S-shaped) decline from the retirement age
+    toward ``end_income_ratio`` at the end age, in today's (pre-inflation)
+    dollars. With ``dur = end_age - retirement_age`` and
+    ``x = age - retirement_age`` (years into retirement)::
+
+        end_income_ratio
+        + (1 - end_income_ratio) * 1 / (1 + exp(steepness * (x - dur / 2)))
+
+    The sigmoid term is 1/(1+e^...) and is strictly less than 1 for any finite
+    steepness, so the value at retirement (x=0) is just below 1 and the curve
+    settles toward (never exactly reaching) ``end_income_ratio`` at end age.
+    Larger ``steepness`` gives a sharper transition around mid-retirement;
+    ``steepness`` near 0 gives a flat curve near the midpoint.
     """
-    if age <= p.retirement_age:
-        return 1.0
-    span = p.end_age - p.retirement_age  # >= 1 (validated)
-    progress = (age - p.retirement_age) / span
-    return 1.0 - progress * (1.0 - p.end_income_ratio)
+    dur = p.end_age - p.retirement_age  # >= 1 (validated)
+    x = age - p.retirement_age
+    sig = 1.0 / (1.0 + math.exp(p.steepness * (x - dur / 2.0)))
+    return p.end_income_ratio + (1.0 - p.end_income_ratio) * sig
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +292,7 @@ def step_year(
     effective_rate, meltdown_gross) where balances is (rrsp, tfsa, nonreg) at
     the end of the previous year, withdrawal is gross cash leaving the
     accounts during the year, target_monthly is the inflation-indexed monthly
-    income target (already reduced by the linear income decline), tax_paid is
+    income target (already reduced by the sigmoidal income decline), tax_paid is
     the federal + Quebec income tax on all taxable income (CPP + gross OAS +
     RRSP/RRIF withdrawals - both pensions are fully taxable), oas_clawback is
     the OAS recovery tax amount, rrif_min is the mandatory minimum RRSP/RRIF
@@ -314,7 +328,7 @@ def step_year(
     tfsa *= 1.0 + annual_return
     nonreg *= 1.0 + annual_return
 
-    # Inflation-indexed monthly income target, reduced by the linear decline.
+    # Inflation-indexed monthly income target, reduced by the sigmoidal decline.
     target_monthly = p.target_monthly_income * income_fraction(p, age) * infl
 
     # Pensions during retirement years only, indexed from today.
@@ -602,6 +616,7 @@ def build_result(p: PlanInputs, rows: list[dict], mc: dict) -> dict:
         ("Contribution escalation (%)", _fmt_pct(p.contribution_escalation)),
         ("Target monthly income at retirement (today's CAD)", p.target_monthly_income),
         ("Income at end age (% of retirement income)", _fmt_pct(p.end_income_ratio)),
+        ("Income decline steepness", f"{p.steepness:.2f}"),
         ("QPP at 65 (% of maximum)", round(p.qpp_monthly_at_65 / QPP_MAX_AT_65_2025 * 100.0, 2)),
         ("QPP monthly at 65 (today's CAD)", p.qpp_monthly_at_65),
         ("QPP start age", p.qpp_start_age),

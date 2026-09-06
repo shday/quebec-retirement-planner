@@ -53,9 +53,11 @@ Each year from your current age to your end age:
   are added to each account, then all balances grow at the assumed return.
 - **Retirement years**: pensions are paid once started — QPP (adjusted for
   start age, index-linked) and OAS (deferred +36% if started at 70, +10% from
-  age 75, optional clawback). The **income target declines linearly** from 100% at the
-  retirement age down to the "income at end age" percentage at your end age
-  (in today's dollars, then inflation-indexed). QPP and OAS are
+  age 75, optional clawback). The **income target declines along an S-shaped
+  (sigmoidal) curve** from just below 100% at the retirement age, settling
+  toward the "income at end age" percentage at your end age (in today's
+  dollars, then inflation-indexed); a **steepness** input controls how sharp
+  the drop is around mid-retirement. QPP and OAS are
   **fully taxable**; the remaining after-tax income need is withdrawn from
   **non-registered → RRSP/RRIF (tax-grossed-up) → TFSA**, with the RRSP/RRIF
   gross-up solved against the real progressive tax function.
@@ -141,7 +143,7 @@ those values. To go back to the factory numbers, delete `plan_defaults.json`
 | Column | Meaning |
 | --- | --- |
 | Age, Year | Calendar year for each age |
-| Income % | Retirement income target as a % of the retirement-age target (declines linearly) |
+| Income % | Retirement income target as a % of the retirement-age target (S-shaped decline toward the end-age level) |
 | Income target | Monthly income target for that year, inflation-indexed (CAD) |
 | RRSP, TFSA, Non-registered | End-of-year account balances (CAD) |
 | Total | Sum of the three accounts |
@@ -159,7 +161,8 @@ those values. To go back to the factory numbers, delete `plan_defaults.json`
 | Input | Default | Source |
 | --- | --- | --- |
 | Target monthly income at retirement | $4,000 | Your own lifestyle estimate |
-| Income at end age (% of retirement) | 65% (linear decline) | Your own assumption |
+| Income at end age (% of retirement) | 65% (income target settles toward this level) | Your own assumption |
+| Steepness of income decline | 0.25 (higher = sharper drop around mid-retirement) | Your own assumption |
 | QPP at 65 | 85% of maximum (≈$1,185.96/mo, 2025 max $1,395.25) | [Retraite Québec — your statement pension ÷ the maximum](https://www.retraitequebec.gouv.qc.ca/en/citizens/retirement-planning/applying-your-retirement-pension/retirement-pension-quebec-pension-plan) |
 | OAS monthly at 65 | $734.95 (2025 max, 65–74; $808.45 at 75+) | [Service Canada / your OAS statement](https://www.canada.ca/en/services/benefits/publicpensions/cpp/old-age-security.html) |
 | RRSP → RRIF conversion age | At retirement (deadline 71) | Your own plan (early conversion earns the pension-income credits sooner) |
@@ -203,8 +206,10 @@ OAS can start at 65 or be deferred to 70 for **+36%**, and gets an automatic
 - Non-registered account gains are untaxed by default (capital-gains modeling
   is a future change). TFSA withdrawals are tax-free.
 - Pensions are counted only from the retirement year onward.
-- The income decline is linear in real (today's) dollars and one inflation rate
-  is applied to all years (no healthcare-specific escalation).
+- The income decline follows a sigmoidal (S-shaped) curve in real (today's)
+  dollars — it does not reach 100% or the end-age level exactly, it settles
+  toward them — and one inflation rate is applied to all years (no
+  healthcare-specific escalation).
 - RRSP contributions stop at the conversion age (redirected to TFSA); TFSA room limits and
   GIS are not modeled.
 - Published per-age pension maximums can differ slightly from factor-based

@@ -53,7 +53,8 @@ DEFAULT_CONTRIBUTION_ESCALATION = 0.0   # annual growth of monthly contributions
 
 # Retirement income
 DEFAULT_TARGET_MONTHLY_INCOME = 4_000   # today's CAD
-DEFAULT_END_INCOME_RATIO = 0.65         # income at end age, as a fraction of retirement income
+DEFAULT_END_INCOME_RATIO = 0.65         # income the target settles toward at end age, as a fraction of retirement income
+DEFAULT_INCOME_STEEPNESS = 0.25         # steepness of the S-shaped retirement income decline
 DEFAULT_QPP_PCT_OF_MAX = 0.85           # QPP at 65, as a fraction of the maximum pension
 DEFAULT_QPP_START_AGE = 72
 DEFAULT_OAS_START_AGE = 70
@@ -88,6 +89,7 @@ PERSON_FIELDS = (
     "nonreg_monthly",
     "target_monthly_income",
     "end_income_ratio_pct",  # 0-100
+    "steepness",             # 0-1 fraction
     "qpp_pct",               # 0-100
     "qpp_start",
     "oas_monthly",
@@ -107,6 +109,7 @@ _INT_FIELDS = {
 }
 _FLOAT_FIELDS = {
     "oas_monthly",
+    "steepness",
     "annual_return_pct", "inflation_pct", "volatility_pct", "escalation_pct",
 }
 _BOOL_FIELDS = {"oas_clawback", "convert_at_retirement"}
@@ -141,6 +144,7 @@ def factory_person() -> dict:
         "nonreg_monthly": DEFAULT_NONREG_MONTHLY,
         "target_monthly_income": DEFAULT_TARGET_MONTHLY_INCOME,
         "end_income_ratio_pct": int(DEFAULT_END_INCOME_RATIO * 100.0),  # 65
+        "steepness": DEFAULT_INCOME_STEEPNESS,                           # 0.25
         "qpp_pct": int(DEFAULT_QPP_PCT_OF_MAX * 100.0),                 # 85
         "qpp_start": DEFAULT_QPP_START_AGE,                             # 72
         "oas_monthly": C.OAS_MAX_2025,

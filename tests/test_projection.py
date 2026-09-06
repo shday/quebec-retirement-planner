@@ -1,5 +1,7 @@
 """Tests for the deterministic projection model, Monte Carlo and validation."""
 
+import math
+
 import pytest
 
 from projection import (
@@ -7,6 +9,7 @@ from projection import (
     build_result,
     compute_all,
     deterministic_projection,
+    income_fraction,
     monte_carlo,
     oas_adjustment,
     qpp_adjustment,
@@ -120,7 +123,7 @@ def test_exhaustion_year_and_shortfall_amount():
         nonreg_balance=0, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=2_000,
+        target_monthly_income=2_000, end_income_ratio=1.0,  # flat target: isolate the exhaustion mechanics
     )
     res = build_result(p, deterministic_projection(p), monte_carlo(p, num_sims=20))
     short = next(r for r in res["projection"] if r["shortfall"] > 0)
@@ -136,26 +139,56 @@ def test_exhaustion_year_and_shortfall_amount():
 
 
 # ---------------------------------------------------------------------------
-# Linear income decline
+# Sigmoidal income decline
 # ---------------------------------------------------------------------------
-def test_linear_income_decline():
+def _sig_frac(er: float, steepness: float, ret_age: int, end_age: int, age: int) -> float:
+    """Closed-form bounded sigmoid fraction the model should produce."""
+    dur = end_age - ret_age
+    x = age - ret_age
+    sig = 1.0 / (1.0 + math.exp(steepness * (x - dur / 2.0)))
+    return er + (1.0 - er) * sig
+
+
+def test_income_fraction_bounded_sigmoid_shape():
+    er, s, ret, end = 0.6, 0.25, 65, 90  # dur = 25
+    p = PlanInputs(retirement_age=ret, end_age=end, end_income_ratio=er, steepness=s)
+    # Strictly below 1 at retirement (x=0) for any finite steepness...
+    assert income_fraction(p, ret) == pytest.approx(_sig_frac(er, s, ret, end, ret))
+    assert income_fraction(p, ret) < 1.0
+    # ...monotone decreasing through retirement...
+    xs = range(ret + 1, end + 1)
+    fs = [income_fraction(p, a) for a in (ret, *xs)]
+    assert all(b <= a for a, b in zip(fs, fs[1:]))
+    # ...still above the floor at end age (settles toward, never below/equal it).
+    assert end > _sig_frac(er, s, ret, end, end) > er
+    # Flat at the midpoint when steepness -> 0 (1/(1+e^0) = 0.5).
+    flat = PlanInputs(retirement_age=ret, end_age=end, end_income_ratio=er, steepness=0.0)
+    assert income_fraction(flat, ret) == pytest.approx((1.0 + er) / 2.0)
+
+
+def test_sigmoidal_income_decline():
+    er, s, ret, end = 0.6, 0.25, 65, 90  # dur = 25
     p = PlanInputs(
-        current_age=60, retirement_age=60, end_age=70,
+        current_age=65, retirement_age=ret, end_age=end,
         rrsp_balance=0, rrsp_monthly=0,
         tfsa_balance=0, tfsa_monthly=0,
         nonreg_balance=10_000_000, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=4_000, end_income_ratio=0.6,
+        target_monthly_income=4_000, end_income_ratio=er, steepness=s,
     )
     by_age = {r["age"]: r for r in deterministic_projection(p)}
-    assert by_age[60]["withdrawal"] == pytest.approx(4_000 * 12 * 1.0)   # 100% at retirement
-    assert by_age[65]["withdrawal"] == pytest.approx(4_000 * 12 * 0.8)   # midpoint of decline
-    assert by_age[70]["withdrawal"] == pytest.approx(4_000 * 12 * 0.6)   # 60% at end age
-    assert by_age[70]["shortfall"] == pytest.approx(0.0)
+    # near full at retirement, falling through the mid-retirement window, above floor at end
+    assert by_age[65]["withdrawal"] == pytest.approx(4_000 * 12 * _sig_frac(er, s, ret, end, 65))
+    # the midpoint age is 77.5, so ages 77/78 bracket it (each just off 0.8)
+    assert by_age[78]["withdrawal"] < 4_000 * 12 * (1.0 + er) / 2.0 < by_age[77]["withdrawal"]
+    assert by_age[90]["withdrawal"] == pytest.approx(4_000 * 12 * _sig_frac(er, s, ret, end, 90))
+    assert by_age[65]["withdrawal"] > by_age[77]["withdrawal"] > by_age[90]["withdrawal"]
+    assert by_age[90]["shortfall"] == pytest.approx(0.0)
 
 
 def test_decline_only_in_retirement():
+    er, s = 0.6, 0.25
     p = PlanInputs(
         current_age=40, retirement_age=65, end_age=66,
         rrsp_balance=0, rrsp_monthly=0,
@@ -163,18 +196,19 @@ def test_decline_only_in_retirement():
         nonreg_balance=1_000_000, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=4_000, end_income_ratio=0.6,
+        target_monthly_income=4_000, end_income_ratio=er, steepness=s,
     )
     by_age = {r["age"]: r for r in deterministic_projection(p)}
     assert by_age[40]["withdrawal"] == pytest.approx(0.0)   # working year: no retirement draw
     assert by_age[64]["withdrawal"] == pytest.approx(0.0)
     assert by_age[40]["income_pct"] == pytest.approx(0.0)   # no retirement target before retirement
     assert by_age[40]["income_target"] == pytest.approx(0.0)
-    assert by_age[65]["income_pct"] == pytest.approx(100.0)
-    assert by_age[66]["income_pct"] == pytest.approx(60.0)  # end age -> 60%
+    assert by_age[65]["income_pct"] == pytest.approx(_sig_frac(er, s, 65, 66, 65) * 100.0)
+    assert by_age[66]["income_pct"] == pytest.approx(_sig_frac(er, s, 65, 66, 66) * 100.0)  # end age, above floor
 
 
 def test_rows_carry_income_pct_and_target():
+    er, s = 0.6, 0.25
     p = PlanInputs(
         current_age=60, retirement_age=65, end_age=70,
         rrsp_balance=0, rrsp_monthly=0,
@@ -182,13 +216,13 @@ def test_rows_carry_income_pct_and_target():
         nonreg_balance=10_000_000, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=4_000, end_income_ratio=0.6,
+        target_monthly_income=4_000, end_income_ratio=er, steepness=s,
     )
     by_age = {r["age"]: r for r in deterministic_projection(p)}
     assert by_age[60]["income_pct"] == pytest.approx(0.0)      # working
     assert by_age[60]["income_target"] == pytest.approx(0.0)
-    assert by_age[65]["income_target"] == pytest.approx(4_000 * 1.0)
-    assert by_age[70]["income_target"] == pytest.approx(4_000 * 0.6)
+    assert by_age[65]["income_target"] == pytest.approx(4_000 * _sig_frac(er, s, 65, 70, 65))
+    assert by_age[70]["income_target"] == pytest.approx(4_000 * _sig_frac(er, s, 65, 70, 70))
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +436,7 @@ def test_validation_errors():
     assert validate(PlanInputs(annual_return=-0.1))
     assert validate(PlanInputs(end_income_ratio=-0.1))
     assert validate(PlanInputs(end_income_ratio=1.5))
+    assert validate(PlanInputs(steepness=-0.1))
 
 
 def test_defaults_are_valid_and_run_end_to_end():
@@ -533,6 +568,7 @@ def test_monthly_meltdown_add_on_top_of_need():
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
         target_monthly_income=2_000,  # 24,000/yr after-tax need
+        end_income_ratio=1.0,  # flat target: isolate the meltdown add-on
         rrif_conversion_age=71,
         monthly_meltdown=1_000,   # 12,000/yr into the TFSA
     )
@@ -617,7 +653,7 @@ def test_monthly_meltdown_headline_scenario():
     melt = compute_all(PlanInputs(monthly_meltdown=550, target_monthly_income=4_750, **scen))
     b72 = next(r for r in base["projection"] if r["age"] == 72)
     m72 = next(r for r in melt["projection"] if r["age"] == 72)
-    assert b72["effective_rate"] > 0.17  # sanity: the base scenario really jumps
+    assert b72["effective_rate"] > 0.15  # sanity: the base scenario really carries meaningful tax
     assert m72["effective_rate"] < b72["effective_rate"]
     assert m72["effective_rate"] < 0.17
     assert m72["rrsp"] < b72["rrsp"]

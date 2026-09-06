@@ -18,6 +18,7 @@ def test_engine_defaults_still_seed_plan_inputs():
     assert p.annual_return == D.DEFAULT_ANNUAL_RETURN
     assert p.inflation_rate == D.DEFAULT_INFLATION
     assert p.target_monthly_income == D.DEFAULT_TARGET_MONTHLY_INCOME
+    assert p.steepness == D.DEFAULT_INCOME_STEEPNESS
     assert p.num_sims == D.DEFAULT_MONTE_CARLO_SIMS
     assert p.seed == D.DEFAULT_SEED
 
@@ -33,6 +34,7 @@ def test_factory_plan_matches_engine_defaults_and_people_identical():
     assert me["rrsp_balance"] == D.DEFAULT_RRSP_BALANCE
     assert me["target_monthly_income"] == D.DEFAULT_TARGET_MONTHLY_INCOME
     assert me["end_income_ratio_pct"] == int(D.DEFAULT_END_INCOME_RATIO * 100.0)
+    assert me["steepness"] == D.DEFAULT_INCOME_STEEPNESS
     assert me["qpp_pct"] == int(D.DEFAULT_QPP_PCT_OF_MAX * 100.0)
     assert me["oas_clawback"] is True and me["convert_at_retirement"] is True
     assert plan["people"]["spouse"] == me  # both people start identical

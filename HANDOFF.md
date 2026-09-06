@@ -62,9 +62,14 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
    Both start only at their start age and only at/after retirement age. The app's
    QPP input is **% of the maximum at 65** (default 85%); the model stores the
    derived monthly dollars in `qpp_monthly_at_65`.
-5. **Income need** (retirement years): the monthly target declines linearly via
-   `income_fraction(p, age)` from 1.0 at `retirement_age` to
-   `end_income_ratio` (default 0.65) at `end_age`, inflation-indexed.
+5. **Income need** (retirement years): the monthly target declines along a
+   sigmoidal curve via `income_fraction(p, age)` =
+   `end_income_ratio + (1 - end_income_ratio)/(1 + exp(steepness*(x - dur/2)))`
+   with `dur = end_age - retirement_age`, `x = age - retirement_age`. It starts
+   just below 1.0 at `retirement_age` (never exactly 1.0 for finite steepness)
+   and settles toward `end_income_ratio` (default 0.65) at `end_age`;
+   `steepness` (default 0.25) controls how sharp the mid-retirement drop is.
+   Then inflation-indexed.
 6. **Taxation** (automatic, no inputs — see `tax.py`): taxable income =
    `CPP + gross OAS + RRSP/RRIF withdrawal` (gross OAS is taxable even when
    clawed back). Tax = federal brackets (2026: 14/20.5/26/29/33%) + Quebec
@@ -154,7 +159,8 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   marital-status input). "Family income" is proxied by the taxpayer's own
   taxable income.
 - Defaults: return 5%, inflation 2.25%, volatility 5%, escalation 0%, income
-  at end age 65% (linear decline), monthly meltdown $0 (off), target monthly
+  at end age 65% (settled toward via an S-shaped decline, steepness 0.25),
+  monthly meltdown $0 (off), target monthly
   income $4,000, RRSP monthly contribution $600, ages 55/65/90, RRSP $250k,
   1,000 sims, seed 42. No tax default — tax is automatic.
 
@@ -181,8 +187,10 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
   phase-outs use the taxpayer's own income; the Quebec living-alone credit is
   not modeled; working years are not taxed.
 - Pensions counted only from the retirement year onward.
-- **Linear income decline**: retirement spending falls linearly from 100% at
-  retirement to `end_income_ratio` (default 65%) at end age, in real dollars.
+- **Sigmoidal income decline**: retirement spending follows an S-shaped curve
+  (`income_fraction`) starting just below 100% at retirement and settling
+  toward `end_income_ratio` (default 65%) at end age, in real dollars; it never
+  reaches either bound exactly, and `steepness` (default 0.25) shapes the drop.
 - TFSA room limits and GIS are **out of scope** (documented).
 - `PlanInputs` is a **frozen dataclass** (hashable) because `app.py` caches
   `compute()` with `@st.cache_data`. Keep it hashable if you add fields.
@@ -212,11 +220,11 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 
 ## Verification status
 
-- 73/73 pytest tests passing (17 tax unit tests + projection/household/
+- 74/74 pytest tests passing (18 tax unit tests + projection/household/
   defaults/export tests; includes
   exact bracket/credit/abatement math, the TP-1.D.B-V line-361 phase-out,
   exhaustion-year, RRIF-minimum (incl. early conversion), monthly meltdown
-  (TFSA reinvestment, stop-at-QPP, clamping, indexing), linear
+  (TFSA reinvestment, stop-at-QPP, clamping, indexing), sigmoidal
   income-decline, tax/clawback columns, MC seed reproducibility, defaults
   persistence).
 - `test_defaults.py` verifies engine defaults still seed `PlanInputs`, the

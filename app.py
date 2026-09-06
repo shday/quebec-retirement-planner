@@ -159,7 +159,13 @@ def _render_personal_inputs(pid: str) -> None:
     )
     st.number_input("Target monthly income at retirement (today's CAD)", 0, 100_000, step=250, format="%d", key=key("target_monthly_income"))
     st.slider("Income at end age (% of retirement income)", 0, 100, step=5, key=key("end_income_ratio_pct"))
-    st.caption("Income needs decline linearly from retirement to end age.")
+    st.slider("Steepness of income decline", 0.0, 1.0, step=0.05, key=key("steepness"))
+    st.caption(
+        "Income needs follow an S-shaped decline from retirement toward the "
+        "end-age level: higher steepness holds income nearer full longer then "
+        "drops faster around mid-retirement; lower steepness gives a more "
+        "gradual, gentler curve."
+    )
     st.caption("Pensions are indexed to inflation from today.")
     st.slider("QPP at 65 (% of maximum)", 0, 100, step=1, key=key("qpp_pct"))
     qpp_pct = float(st.session_state[key("qpp_pct")]) / 100.0
@@ -218,6 +224,7 @@ def _plan_inputs(pid: str) -> PlanInputs:
         contribution_escalation=float(sh["escalation_pct"]) / 100.0,
         target_monthly_income=float(pi["target_monthly_income"]),
         end_income_ratio=float(pi["end_income_ratio_pct"]) / 100.0,
+        steepness=float(pi["steepness"]),
         qpp_monthly_at_65=qpp_pct * C.QPP_MAX_AT_65_2025,
         qpp_start_age=int(pi["qpp_start"]),
         oas_monthly=float(pi["oas_monthly"]),
@@ -447,7 +454,7 @@ def render_plan_tab(pid: str, label: str, p: PlanInputs, result: dict) -> None:
         height=440,
         column_config={
             "Age": st.column_config.NumberColumn(label="Age", pinned=True),
-            "Income %": st.column_config.NumberColumn(label="Income %", help="Income target for the year as a % of the target at retirement (declines linearly to the end-age level)."),
+            "Income %": st.column_config.NumberColumn(label="Income %", help="Income target for the year as a % of the target at retirement (S-shaped decline toward the end-age level)."),
             "Income target": st.column_config.NumberColumn(label="Income target", help="Monthly after-tax income target for the year, inflation-indexed from today's dollars."),
             "RRSP": st.column_config.NumberColumn(label="RRSP", help="End-of-year RRSP balance — withdrawals are fully taxable."),
             "TFSA": st.column_config.NumberColumn(label="TFSA", help="End-of-year TFSA balance — tax-free."),

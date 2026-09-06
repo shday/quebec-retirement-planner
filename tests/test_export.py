@@ -63,7 +63,7 @@ def test_projection_csv_reports_shortfall_rows():
         nonreg_balance=0, nonreg_monthly=0,
         annual_return=0.0, inflation_rate=0.0,
         qpp_monthly_at_65=0.0, oas_monthly=0.0,
-        target_monthly_income=2_000,
+        target_monthly_income=2_000, end_income_ratio=1.0,  # flat target: isolate the shortfall row
     )
     res = compute_all(p)
     rows = _rows(projection_csv(res))
