@@ -45,7 +45,7 @@ st.caption(
 )
 st.caption(
     ":orange[Not financial advice, experimental only — tax rules and figures are based on what was "
-    "available in Sept 2026. Several assumptions may differ from your specifc tax situation. "
+    "available in Sept 2026. Several assumptions may differ from your specific tax situation. "
     "See the README for more info.]"
 )
 
