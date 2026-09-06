@@ -29,12 +29,13 @@ Dependencies: `requirements.txt` (streamlit, plotly) and
 
 | File | Role |
 | --- | --- |
-| `app.py` | Streamlit UI: sidebar inputs, 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, 4 download buttons. Thin glue only. No tax inputs — the tax section is an informational caption. |
-| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `rrif_conversion_age()` (resolves the RRSP→RRIF conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns a 12-tuple including tax paid, OAS clawback, RRIF minimum, marginal/effective rates, meltdown gross), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). |
-| `tax.py` | The income tax model (pure, stdlib): `scale()` (base-year → year indexation), `federal_bracket_tax()` / `quebec_bracket_tax()`, `federal_credits()` / `quebec_credits()` (basic personal, age 65+, pension-income; phase-outs), `income_tax()` (returns fed/QC payable after credits and the Quebec abatement), `oas_recovery()` (clawback), `marginal_burden_rate()` (numeric marginal of income tax + recovery), `eligible_pension_income()` (RRIF payments only, from the conversion age). |
+| `app.py` | Streamlit UI: sidebar inputs + an "editing plan" selector, three tabs (Your plan / Spouse's plan / Combined). Each plan tab shows the 5 metric cards, Plotly band chart (deterministic stacked bars by account + P5–P95 band), projection dataframe, Monte Carlo table, download buttons. Per-person inputs use unique widget keys (`{person}__field`) so both people's numbers persist; shared assumptions are entered once. The Combined tab is `household.py` output. No tax inputs — the tax section is an informational caption. |
+| `projection.py` | The model. `PlanInputs` (frozen dataclass), `validate()`, `qpp_adjustment()`, `oas_adjustment()`, `income_fraction()`, `rrif_conversion_age()` (resolves the RRSP→RRIF conversion age: default = retirement age, deadline 71), `_solve_rrsp_gross()` (fixed-point gross-up against the real tax function), `step_year()` (single-year engine shared by deterministic + MC; returns a 12-tuple including tax paid, OAS clawback, RRIF minimum, marginal/effective rates, meltdown gross), `deterministic_projection()`, `monte_carlo()`, `build_result()`, `compute_all()`. Pure stdlib (no numpy). Single-person only — unchanged by the household feature. |
+| `household.py` | Pure (stdlib) two-person combination of two independent plan results. `household_projection()` merges the two deterministic projections on a common calendar-year axis and sums balances/pension income/withdrawals/tax/income target; past a person's end age their balances carry forward at the last modeled value while they contribute no further income. `household_montecarlo()` sums the two plans' independent P5/P50/P95 bands (indicative, not a joint simulation). `total_series()`, `first_shortfall_year()` helpers. |
+| `tax.py` | The income tax model (pure, stdlib): `scale()` (base-year → year indexation), `federal_bracket_tax()` / `quebec_bracket_tax()`, `federal_credits()` / `quebec_credits()` (basic personal, age 65+, pension-income; phase-outs), `income_tax()` (returns fed/QC payable after credits and the Quebec abatement), `oas_recovery()` (clawback), `marginal_burden_rate()` (numeric marginal of income tax + recovery), `eligible_pension_income()` (RRIF payments only, from the conversion age). Single-taxpayer only — unchanged by the household feature. |
 | `constants.py` | Statutory constants with cited sources: RRIF minimum factors, QPP/OAS adjustment rules, 2025 pension maxima, 2026 federal/Quebec tax brackets, credits and phase-outs, planning defaults. |
-| `export.py` | `projection_csv()`, `summary_csv()`, `montecarlo_csv()`, `zip_bytes()`. Raw numeric cells (2 decimals, no thousands separators) so Google Sheets imports them as numbers. |
-| `tests/` | `test_tax.py` (17 tests: brackets, credits/phase-outs, abatement, recovery, marginal rate, indexation), `test_projection.py` (model math, tax/clawback columns, exhaustion, validation, end-to-end), `test_export.py` (CSV layout/values, shortfall rows, zip contents). |
+| `export.py` | `projection_csv()`, `summary_csv()`, `montecarlo_csv()`, `zip_bytes()`, plus `household_projection_csv()`. Raw numeric cells (2 decimals, no thousands separators) so Google Sheets imports them as numbers. |
+| `tests/` | `test_tax.py` (17 tests: brackets, credits/phase-outs, abatement, recovery, marginal rate, indexation), `test_projection.py` (model math, tax/clawback columns, exhaustion, validation, end-to-end), `test_household.py` (identical plans double columns; differing horizons align by calendar year with balance carry-forward; shortfall; MC sums), `test_export.py` (CSV layout/values, shortfall rows, zip contents, household CSV). |
 | `README.md` | User setup, Google Sheets import steps, model explanation, sources. |
 | `conftest.py` | Empty; makes project root importable for pytest. |
 
@@ -181,16 +182,38 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 - TFSA room limits and GIS are **out of scope** (documented).
 - `PlanInputs` is a **frozen dataclass** (hashable) because `app.py` caches
   `compute()` with `@st.cache_data`. Keep it hashable if you add fields.
+- **Two fixed people (the couple), additive household** (chosen during
+  planning): shared assumptions (return/inflation/volatility/escalation) are
+  entered once; ages, accounts, pensions, meltdown and target income are
+  per-person. Each plan runs the single-person model and is taxed as a single
+  taxpayer; the **Combined** tab sums the two plans by calendar year
+  (carry-forward of a passed person's balances). This is explicitly **not** a
+  joint income-tax or joint-Monte-Carlo model.
+- **Per-person inputs survive Streamlit widget-state pruning**: widget-key
+  state is pruned whenever a person's widgets are not rendered, so `app.py`
+  keeps the authoritative values in **non-widget** session-state dicts
+  (`people_inputs`, `shared_inputs`). Each person's widgets are keyed
+  `{pid}__{field}`, created **without** `value=`/`index=` (avoids the "default
+  + Session State" warning), and re-seeded from the dicts via
+  `_ensure_widget_key()` right before rendering. This is why switching the
+  "Editing plan inputs" selector never loses either person's numbers.
 
 ## Verification status
 
-- 53/53 pytest tests passing (17 tax unit tests + model/CSV tests; includes
+- 64/64 pytest tests passing (17 tax unit tests + projection/household/export
+  tests; includes
   exact bracket/credit/abatement math, the TP-1.D.B-V line-361 phase-out,
   exhaustion-year, RRIF-minimum (incl. early conversion), monthly meltdown
   (TFSA reinvestment, stop-at-QPP, clamping, indexing), linear
   income-decline, tax/clawback columns, MC seed reproducibility).
+- New `test_household.py` (identical plans double each column; differing
+  horizons align by calendar year with balance carry-forward past a person's
+  end age; combined shortfall year; household MC sums; `total_series`) and a
+  household-CSV export test. Total suite: **64 passing**.
 - Streamlit `AppTest` smoke test: default run, widget change (QPP start 70),
-  and invalid-input path — no exceptions.
+  invalid-input path, plus switching the "Editing plan inputs" selector and
+  changing one spouse's RRSP balance (the other person's plan is unaffected) —
+  no exceptions, no "Session State" widget warnings.
 - Real server boot: HTTP 200, `/_stcore/health` → `ok`.
 - Behavioral sanity confirmed: ~$550/mo monthly meltdown on the defaults
   removes the effective-rate jump at QPP start (18.55% → ~15.6% at 72, RRIF
@@ -207,12 +230,15 @@ Ages run `current_age → end_age`; `year_offset = age - current_age`;
 - The user asked about **changing the AI model** running the session — that is
   a harness-level setting, not a code change; this file exists to make a fresh
   session/context fully self-sufficient.
-- Possible future model changes: employer pension (RPP/DB), spousal accounts
-  (which would unlock pension-income splitting and the Quebec living-alone
-  credit — $2,172 in 2026), capital-gains on non-registered, GIS, the 75+ OAS
-  amount boost (higher OAS and full-clawback point for ages 75+), or a
-  different spend-down order. Any change should update `constants.py` (if
-  statutory), the model (`tax.py`/`projection.py`), the tests, and
-  README/HANDOFF together, and re-run `pytest`.
+- Possible future model changes: a **true joint (household) income-tax model**
+  with pension-income splitting and shared credits — the two-person feature
+  currently adds two independently-taxed single-taxpayer plans, so this would
+  be the next step beyond it. Also on the list: employer pension (RPP/DB),
+  spousal accounts (which would unlock pension-income splitting and the Quebec
+  living-alone credit — $2,172 in 2026), capital-gains on non-registered, GIS,
+  the 75+ OAS amount boost, or a different spend-down order. Any change should
+  update `constants.py` (if statutory), the model
+  (`tax.py`/`projection.py`), the tests, and README/HANDOFF together, and
+  re-run `pytest`.
 - `app.py` uses modern Streamlit API (`width="stretch"`, not deprecated
   `use_container_width`). Watch for Streamlit API deprecations on upgrades.

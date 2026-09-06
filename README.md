@@ -11,6 +11,11 @@ and download CSVs to import into **Google Sheets** manually.
   and the OAS recovery tax (indexed to inflation)
 - RRSP converts to a **RRIF** at the chosen conversion age (default: retirement age; statutory deadline 71) with mandatory minimum withdrawals (ITR s. 7308)
 - Monte Carlo: 1,000 simulations, fixed seed, with a P5–P95 band chart
+- **Two planners in one**: shared assumptions (return/inflation/volatility) are
+  entered once and applied to both people, whose ages, accounts, pensions,
+  meltdown and target income stay independent. Three tabs show your plan, the
+  spouse's plan, and a **Combined** household view that adds the two plans
+  together on a common calendar-year axis.
 - **No Google API, no OAuth, no accounts** — everything runs locally; the CSVs
   are yours to upload wherever you like.
 
@@ -84,6 +89,30 @@ from a lognormal distribution around your expected return and volatility, then
 reports P5/P25/P50/P75/P95 balances and the **success rate** (never ran out of
 money).
 
+## Two people and a household view
+
+From the sidebar pick which person's plan you are entering numbers for
+(**Editing plan inputs**). Shared assumptions (return, inflation, volatility,
+contribution escalation) are entered once and applied to both plans; personal
+numbers (ages, account balances and contributions, QPP/OAS amounts and start
+ages, clawback, RRIF conversion, meltdown and target income) are kept per
+person. The **Your plan** and **Spouse's plan** tabs each run the full
+single-person model described above. The **Combined** tab adds the two plans
+together on a common calendar-year axis for a household picture:
+
+- Balances, pension income (QPP/OAS), withdrawals, tax and the income target
+  are summed across both plans for each calendar year.
+- If one plan ends before the other (a person reaches their modeled end age),
+  that person's balances are carried forward at their last modeled value (the
+  estate stays in the household) while they contribute no further income or
+  tax.
+- The Monte Carlo band is the **sum of the two plans' independent** P5/P50/P95
+  runs — indicative only, not a joint simulation with correlated draws.
+
+Both plans are each modeled and taxed as a **single taxpayer** (see the
+simplifications below), so the Combined tab is an additive household estimate,
+not a joint income-tax model.
+
 ## Projection columns
 
 `projection.csv` (and the app's projection table) has one row per year:
@@ -137,7 +166,9 @@ OAS can start at 65 or be deferred to 70 for **+36%**, and gets an automatic
   and reduced by 18.75% of family income above $42,955, exactly as on the
   TP-1.D.B-V Schedule B form. Single-taxpayer approximations: "net family
   income" phase-outs use your own taxable income, and the Quebec living-alone
-  credit ($2,172) is not modeled (no marital-status input; conservative). The
+  credit ($2,172) is not modeled (no marital-status input; conservative). Each
+  person's plan is taxed this way, so the Combined tab is an additive household
+  estimate and is not a joint income-tax model. The
   RRSP/RRIF gross-up is solved against the real tax function (brackets,
   credits and the OAS recovery together) by a fixed-point iteration. Working
   years are not taxed (contributions only).
@@ -171,12 +202,13 @@ OAS can start at 65 or be deferred to 70 for **+36%**, and gets an automatic
 ## Project layout
 
 ```
-app.py            Streamlit UI (sidebar inputs, results, downloads)
+app.py            Streamlit UI (sidebar inputs, three tabs: two people + combined)
 projection.py     Deterministic model + seeded Monte Carlo (pure, testable)
+household.py      Household (two-person) combination of two independent plans
 tax.py            Progressive federal + Quebec income tax model (pure, testable)
 export.py         Projection → CSV strings / zip bytes
 constants.py      Statutory constants (RRIF minimums, QPP/OAS factors, tax 2026, defaults)
-tests/            pytest suite (tax, model, export)
+tests/            pytest suite (tax, model, household, export)
 ```
 
 ## Running the tests

@@ -68,6 +68,55 @@ def projection_csv(result: dict) -> str:
     return buf.getvalue()
 
 
+HOUSEHOLD_PROJECTION_HEADER = [
+    "Year",
+    "Your age",
+    "Spouse's age",
+    "RRSP",
+    "TFSA",
+    "Non-registered",
+    "Total",
+    "Income target",
+    "Withdrawal",
+    "RRIF minimum",
+    "QPP",
+    "OAS",
+    "OAS clawback",
+    "Tax paid",
+    "Shortfall",
+    "Meltdown",
+]
+
+
+def household_projection_csv(household_rows: list[dict]) -> str:
+    """Household (combined two-person) projection: one row per calendar year."""
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(HOUSEHOLD_PROJECTION_HEADER)
+    for r in household_rows:
+        w.writerow(
+            [
+                r["year"],
+                "" if r["age_a"] is None else r["age_a"],
+                "" if r["age_b"] is None else r["age_b"],
+                _money(r["rrsp"]),
+                _money(r["tfsa"]),
+                _money(r["nonreg"]),
+                _money(r["total"]),
+                _money(r["income_target"]),
+                _money(r["withdrawal"]),
+                _money(r["rrif_min"]),
+                _money(r["cpp"]),
+                _money(r["oas"]),
+                _money(r["oas_clawback"]),
+                _money(r["tax_paid"]),
+                _money(r["shortfall"]),
+                _money(r["meltdown_gross"]),
+            ]
+        )
+    return buf.getvalue()
+
+
 def summary_csv(result: dict) -> str:
     """All inputs echoed back plus key results, as Item,Value rows."""
     buf = io.StringIO()

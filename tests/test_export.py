@@ -7,7 +7,14 @@ import zipfile
 
 import pytest
 
-from export import montecarlo_csv, projection_csv, summary_csv, zip_bytes
+from export import (
+    household_projection_csv,
+    montecarlo_csv,
+    projection_csv,
+    summary_csv,
+    zip_bytes,
+)
+import household as HH
 from projection import PlanInputs, compute_all
 
 
@@ -88,6 +95,36 @@ def test_montecarlo_csv_layout():
     assert float(rows[1][1]) <= float(rows[1][3]) <= float(rows[1][5])  # P5 <= P50 <= P95
     assert float(rows[2][1]) <= float(rows[2][3]) <= float(rows[2][5])
     assert 0 <= float(rows[3][1]) <= 100  # success rate
+
+
+def test_household_projection_csv_headers_rows_and_values():
+    res = compute_all(PlanInputs())
+    hh = HH.household_projection(res["projection"], res["projection"])  # identical -> doubled
+    rows = _rows(household_projection_csv(hh))
+    assert rows[0] == [
+        "Year", "Your age", "Spouse's age", "RRSP", "TFSA", "Non-registered",
+        "Total", "Income target", "Withdrawal", "RRIF minimum", "QPP", "OAS",
+        "OAS clawback", "Tax paid", "Shortfall", "Meltdown",
+    ]
+    assert len(rows) == len(hh) + 1
+    first = rows[1]
+    assert int(first[0]) == hh[0]["year"]
+    assert int(first[1]) == hh[0]["age_a"]
+    assert int(first[2]) == hh[0]["age_b"]
+    for cell in first[3:]:
+        assert "," not in cell
+        float(cell)
+    assert float(first[6]) == pytest.approx(hh[0]["total"])      # Total
+    assert float(first[13]) == pytest.approx(hh[0]["tax_paid"])  # Tax paid
+
+
+def test_household_csv_blanks_a_persons_age_after_their_end():
+    pa = PlanInputs(current_age=60, retirement_age=65, end_age=75)
+    pb = PlanInputs(current_age=55, retirement_age=60, end_age=88)
+    hh = HH.household_projection(compute_all(pa)["projection"], compute_all(pb)["projection"])
+    rows = _rows(household_projection_csv(hh))
+    assert any(row[1] == "" for row in rows)  # one age column blank after that person ends
+    assert all(row[3:] and float(row[6]) >= 0 for row in rows[1:])
 
 
 def test_zip_contains_three_identical_csvs():
